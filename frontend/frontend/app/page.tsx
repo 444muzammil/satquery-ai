@@ -2,10 +2,33 @@
 
 import { useState } from 'react';
 
+// Define types for our chat history
+type ChatMessage = {
+  role: 'user' | 'ai';
+  text: string;
+  confidence?: number;
+};
+
 export default function Home() {
+  // Image Upload State
   const [imageA, setImageA] = useState<string | null>(null);
   const [metaA, setMetaA] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  // VQA Chat State
+  const [query, setQuery] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
+    { role: 'ai', text: 'Welcome to SatQuery AI. Upload imagery to begin analysis.' }
+  ]);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  // Metrics State
+  const [metrics, setMetrics] = useState({
+    analysis: 'Awaiting query...',
+    confidence: '--%',
+    evidence: 'No regions detected',
+    trace: 'System idle'
+  });
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -27,6 +50,47 @@ export default function Home() {
       console.error("Upload failed", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!query.trim()) return;
+    
+    // Add user query to chat
+    const newChat = [...chatHistory, { role: 'user' as const, text: query }];
+    setChatHistory(newChat);
+    setQuery("");
+    setAnalyzing(true);
+    setMetrics(prev => ({ ...prev, trace: 'Agent Controller -> Validating Inputs...' }));
+
+    try {
+      const response = await fetch('http://localhost:8000/api/vqa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_base64: imageA || "", // Send the base64 preview we got from upload
+          query: query
+        }),
+      });
+      
+      const data = await response.json();
+      
+      // Add AI response to chat
+      setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence }]);
+      
+      // Update Metrics Dashboard
+      setMetrics({
+        analysis: 'Task Complete',
+        confidence: `${data.confidence}%`,
+        evidence: 'VLM Text Generation',
+        trace: data.trace
+      });
+
+    } catch (error) {
+      console.error("Analysis failed", error);
+      setChatHistory([...newChat, { role: 'ai', text: "Error connecting to AI backend." }]);
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -53,7 +117,6 @@ export default function Home() {
               <input type="file" className="hidden" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={handleFileUpload} />
             </label>
             
-            {/* Display Metadata once extracted */}
             {metaA && (
               <div className="bg-slate-950 p-3 rounded border border-slate-800 text-xs text-slate-400 space-y-1 mt-2">
                 <p className="font-bold text-slate-200 mb-2">IMAGE INFORMATION</p>
@@ -66,7 +129,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Image B and SAR buttons remain static placeholders for Day 3 */}
           <div className="flex flex-col gap-2 opacity-50 pointer-events-none">
             <label className="text-sm">Image B (Optical 2)</label>
             <button className="bg-slate-800 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center">
@@ -102,9 +164,19 @@ export default function Home() {
           </div>
           
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
-             <div className="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 w-11/12">
-               Welcome to SatQuery AI. Upload imagery to begin analysis.
-             </div>
+            {chatHistory.map((msg, idx) => (
+              <div key={idx} className={`p-3 rounded-lg text-sm w-11/12 ${msg.role === 'user' ? 'bg-blue-900/50 text-blue-100 self-end ml-auto border border-blue-800' : 'bg-slate-800 text-slate-300'}`}>
+                <p>{msg.text}</p>
+                {msg.confidence && (
+                  <p className="text-xs text-slate-500 mt-2 border-t border-slate-700 pt-1">
+                    Confidence: {msg.confidence}%
+                  </p>
+                )}
+              </div>
+            ))}
+            {analyzing && (
+               <div className="text-xs text-slate-500 animate-pulse">Agent is analyzing...</div>
+            )}
           </div>
 
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
@@ -112,8 +184,15 @@ export default function Home() {
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
               rows={3}
               placeholder="Ask about your imagery..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); } }}
             ></textarea>
-            <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-lg transition-colors">
+            <button 
+              onClick={handleAnalyze}
+              disabled={analyzing || !imageA}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium py-2 rounded-lg transition-colors"
+            >
               Analyze
             </button>
           </div>
@@ -125,19 +204,19 @@ export default function Home() {
       <div className="h-40 flex gap-4">
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">ANALYSIS</h3>
-          <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">Awaiting query...</div>
+          <div className="flex-1 flex items-center justify-center text-slate-400 text-sm font-medium">{metrics.analysis}</div>
         </div>
         <div className="w-48 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">CONFIDENCE</h3>
-          <div className="flex-1 flex items-center justify-center text-3xl font-light text-slate-600">--%</div>
+          <div className="flex-1 flex items-center justify-center text-3xl font-light text-slate-400">{metrics.confidence}</div>
         </div>
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EVIDENCE</h3>
-          <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">No regions detected</div>
+          <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">{metrics.evidence}</div>
         </div>
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EXECUTION TRACE</h3>
-          <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">System idle</div>
+          <div className="flex-1 flex items-center justify-center text-slate-500 text-sm text-center px-2">{metrics.trace}</div>
         </div>
       </div>
 

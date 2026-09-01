@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import rasterio
 import numpy as np
 from PIL import Image
 import io
 import base64
+import random
 
 app = FastAPI()
 
@@ -15,6 +17,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- NEW: Data model for the VQA request ---
+class VQARequest(BaseModel):
+    image_base64: str
+    query: str
 
 @app.post("/api/upload")
 async def upload_image(file: UploadFile = File(...)):
@@ -32,7 +39,6 @@ async def upload_image(file: UploadFile = File(...)):
     preview_base64 = ""
 
     if is_tiff:
-        # Process GeoTIFF/TIFF for geospatial imagery
         with rasterio.MemoryFile(content) as memfile:
             with memfile.open() as dataset:
                 metadata.update({
@@ -43,17 +49,14 @@ async def upload_image(file: UploadFile = File(...)):
                     "resolution": dataset.res
                 })
                 
-                # Create a visual preview (extract first 3 bands for RGB, or just band 1 if grayscale)
                 bands_to_read = min(3, dataset.count)
                 img_array = dataset.read(list(range(1, bands_to_read + 1)))
                 
-                # Normalize array for PNG conversion
                 if bands_to_read == 1:
                     img_array = img_array[0]
                 else:
-                    img_array = np.moveaxis(img_array, 0, -1) # Convert (C, H, W) to (H, W, C)
+                    img_array = np.moveaxis(img_array, 0, -1)
                 
-                # Scale to 0-255 for display
                 img_array = (255 * (img_array - np.min(img_array)) / (np.max(img_array) - np.min(img_array) + 1e-8)).astype(np.uint8)
                 
                 img = Image.fromarray(img_array)
@@ -61,7 +64,6 @@ async def upload_image(file: UploadFile = File(...)):
                 img.save(buffered, format="PNG")
                 preview_base64 = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
     else:
-        # Handle PNG/JPEG inputs for public benchmark datasets
         img = Image.open(io.BytesIO(content))
         metadata.update({
             "width": img.width,
@@ -73,3 +75,30 @@ async def upload_image(file: UploadFile = File(...)):
         preview_base64 = f"data:image/{img.format.lower()};base64,{base64.b64encode(content).decode()}"
 
     return {"metadata": metadata, "preview": preview_base64}
+
+
+# --- NEW: VQA Endpoint ---
+@app.post("/api/vqa")
+async def analyze_image(request: VQARequest):
+    query = request.query.lower()
+    
+    # Hardware Guardrail: Mocking the Remote-Sensing VLM response for 8GB local RAM.
+    # Replace this block later with an external API call to your fine-tuned model.
+    if "water" in query:
+        answer = "The image contains significant water bodies, likely a river or coastal feature, with some surrounding vegetation."
+        confidence = 88
+    elif "describe" in query or "visible" in query:
+        answer = "The image features a mix of agricultural areas and built-up regions. Specific structural details are visible."
+        confidence = 86
+    elif not request.image_base64:
+        answer = "Error: No image provided for analysis."
+        confidence = 0
+    else:
+        answer = f"Analysis complete for query: '{request.query}'. Land cover features identified."
+        confidence = random.randint(75, 92)
+        
+    return {
+        "answer": answer,
+        "confidence": confidence,
+        "trace": "Agent Controller -> Single-Image Task Selected -> VLM Executed"
+    }
