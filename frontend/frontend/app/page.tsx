@@ -1,8 +1,39 @@
+'use client';
+
+import { useState } from 'react';
+
 export default function Home() {
+  const [imageA, setImageA] = useState<string | null>(null);
+  const [metaA, setMetaA] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      setMetaA(data.metadata);
+      setImageA(data.preview);
+    } catch (error) {
+      console.error("Upload failed", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 p-4 gap-4 font-sans">
       
-      {/* HEADER (Optional but good for product feel) */}
+      {/* HEADER */}
       <header className="flex justify-between items-center pb-2 border-b border-slate-800">
         <h1 className="text-2xl font-bold text-white tracking-tight">SatQuery AI</h1>
         <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">SIH26167 Prototype</span>
@@ -12,26 +43,39 @@ export default function Home() {
       <div className="flex flex-1 gap-4 overflow-hidden">
         
         {/* LEFT PANEL: DATA */}
-        <aside className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-6">
+        <aside className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-6 overflow-y-auto">
           <h2 className="text-sm font-bold text-slate-400 tracking-wider">DATA</h2>
           
           <div className="flex flex-col gap-2">
-            <label className="text-sm">Image A (Optical 1)</label>
-            <button className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center transition-colors">
-              + Upload
-            </button>
+            <label className="text-sm font-medium">Image A (Optical 1)</label>
+            <label className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg py-6 text-sm flex flex-col items-center justify-center transition-colors cursor-pointer">
+              {loading ? "Processing..." : "+ Upload File"}
+              <input type="file" className="hidden" accept=".tif,.tiff,.png,.jpg,.jpeg" onChange={handleFileUpload} />
+            </label>
+            
+            {/* Display Metadata once extracted */}
+            {metaA && (
+              <div className="bg-slate-950 p-3 rounded border border-slate-800 text-xs text-slate-400 space-y-1 mt-2">
+                <p className="font-bold text-slate-200 mb-2">IMAGE INFORMATION</p>
+                <p>Format: {metaA.format}</p>
+                <p>Dimensions: {metaA.width} × {metaA.height}</p>
+                <p>Bands: {metaA.bands}</p>
+                <p>CRS: {metaA.crs}</p>
+                {metaA.resolution !== "N/A" && <p>Resolution: {metaA.resolution[0]?.toFixed(2)}</p>}
+              </div>
+            )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          {/* Image B and SAR buttons remain static placeholders for Day 3 */}
+          <div className="flex flex-col gap-2 opacity-50 pointer-events-none">
             <label className="text-sm">Image B (Optical 2)</label>
-            <button className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center transition-colors">
+            <button className="bg-slate-800 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center">
               + Upload
             </button>
           </div>
-
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 opacity-50 pointer-events-none">
             <label className="text-sm">SAR Image</label>
-            <button className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center transition-colors">
+            <button className="bg-slate-800 border border-slate-700 rounded-lg py-6 text-sm flex items-center justify-center">
               + Upload
             </button>
           </div>
@@ -39,10 +83,16 @@ export default function Home() {
 
         {/* MIDDLE PANEL: SATELLITE VIEWER */}
         <main className="flex-1 bg-black border border-slate-800 rounded-xl flex items-center justify-center relative overflow-hidden">
-          <div className="text-slate-600 flex flex-col items-center">
-            <svg className="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <p className="text-sm font-medium">Satellite Image Viewer</p>
-          </div>
+          {imageA ? (
+            <img src={imageA} alt="Satellite Preview" className="object-contain w-full h-full" />
+          ) : (
+            <div className="text-slate-600 flex flex-col items-center">
+              <svg className="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm font-medium">Satellite Image Viewer</p>
+            </div>
+          )}
         </main>
 
         {/* RIGHT PANEL: AI CHAT */}
@@ -52,7 +102,6 @@ export default function Home() {
           </div>
           
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
-             {/* Chat history will go here later */}
              <div className="bg-slate-800 p-3 rounded-lg text-sm text-slate-300 w-11/12">
                Welcome to SatQuery AI. Upload imagery to begin analysis.
              </div>
