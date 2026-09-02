@@ -26,8 +26,8 @@ export default function Home() {
   const [hoveredRegion, setHoveredRegion] = useState<number | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   
-  // Day 12: Report State
   const [reportData, setReportData] = useState<any>(null);
+  const [gisData, setGisData] = useState<any>(null); // DAY 14: GIS Export State
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState({ analysis: 'Awaiting query...', confidence: '--%', trace: ['System idle'] as string[] });
@@ -72,6 +72,7 @@ export default function Home() {
     setHoveredRegion(null);
     setConnectionError(null);
     setReportData(null);
+    setGisData(null);
     setViewMode('Overlay'); 
     setMetrics(prev => ({ ...prev, trace: ['Agent Controller -> Processing task...'] }));
 
@@ -88,7 +89,7 @@ export default function Home() {
           has_bitemporal: !!imageB,
           image_b_base64: imageB || "",
           sar_base64: sarImage || "",
-          metadata: activeMetadata // Pass metadata for backend cleaning
+          metadata: activeMetadata 
         }),
       });
 
@@ -103,6 +104,7 @@ export default function Home() {
       }
 
       setReportData(data.report_data);
+      setGisData(data.gis_export || null); // Bind GeoJSON if available
 
       setMetrics({
         analysis: data.task,
@@ -129,6 +131,17 @@ export default function Home() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `SatQuery_Analysis_Report_${new Date().getTime()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadGis = () => {
+    if (!gisData) return;
+    const blob = new Blob([JSON.stringify(gisData, null, 2)], { type: 'application/geo+json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SatQuery_Vectors_${new Date().getTime()}.geojson`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -256,14 +269,24 @@ export default function Home() {
         <aside className="w-80 bg-slate-900 border border-slate-800 rounded-xl flex flex-col">
           <div className="p-4 border-b border-slate-800 flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-400 tracking-wider">AI ASSISTANT</h2>
-            {reportData && (
-              <button 
-                onClick={downloadReport} 
-                className="text-[10px] font-bold bg-green-600/80 hover:bg-green-500 text-white px-2 py-1 rounded transition-colors"
-              >
-                Download Report
-              </button>
-            )}
+            <div className="flex gap-1">
+              {gisData && (
+                <button 
+                  onClick={downloadGis} 
+                  className="text-[10px] font-bold bg-purple-600/80 hover:bg-purple-500 text-white px-2 py-1 rounded transition-colors"
+                >
+                  GeoJSON
+                </button>
+              )}
+              {reportData && (
+                <button 
+                  onClick={downloadReport} 
+                  className="text-[10px] font-bold bg-green-600/80 hover:bg-green-500 text-white px-2 py-1 rounded transition-colors"
+                >
+                  Report
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
             {chatHistory.map((msg, idx) => (
@@ -282,14 +305,14 @@ export default function Home() {
                 )}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Running live AI inference...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Running autonomous agent loop...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
             <textarea 
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
               rows={3}
-              placeholder='e.g., "What changed?" or "Where is the water?"'
+              placeholder='e.g., "Identify all flooded zones and export the boundary file."'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); } }}
