@@ -39,7 +39,7 @@ class VQARequest(BaseModel):
     has_bitemporal: bool = False
     image_b_base64: str = ""
     sar_base64: str = ""
-    metadata: dict = {} # Day 12: Incoming metadata for report generation
+    metadata: dict = {}
 
 def decode_base64_to_cv2(b64_str: str):
     if not OPENCV_AVAILABLE or not b64_str:
@@ -102,11 +102,28 @@ class AgentController:
     def execute(self, request: VQARequest):
         task, selected_tools = self.parse_intent(request.query)
         
-        if "OPTICAL_SAR_ANALYSIS" in selected_tools and not request.has_sar:
-            return self._format_error("Missing SAR data. Please upload a SAR image.", task)
-        if "CHANGE_DETECTION" in selected_tools and not request.has_bitemporal:
-            return self._format_error("Missing bi-temporal data. Please upload Image B.", task)
+        # --- DAY 13: STRICT COMPATIBILITY VALIDATION ---
+        imgA = decode_base64_to_cv2(request.image_base64)
+        
+        if "OPTICAL_SAR_ANALYSIS" in selected_tools:
+            if not request.has_sar:
+                return self._format_error("Missing SAR data. Please upload a SAR image.", task)
+            imgSAR = decode_base64_to_cv2(request.sar_base64)
+            # Check if dimensions are wildly different (incompatible pair)
+            if imgA is not None and imgSAR is not None:
+                if abs(imgA.shape[0] - imgSAR.shape[0]) > 500 or abs(imgA.shape[1] - imgSAR.shape[1]) > 500:
+                    return self._format_error("Spatial mismatch detected. Optical and SAR images must be co-registered (similar dimensions) for cross-modal fusion.", task)
 
+        if "CHANGE_DETECTION" in selected_tools:
+            if not request.has_bitemporal:
+                return self._format_error("Missing bi-temporal data. Please upload Image B.", task)
+            imgB = decode_base64_to_cv2(request.image_b_base64)
+            # Check if dimensions are wildly different
+            if imgA is not None and imgB is not None:
+                if abs(imgA.shape[0] - imgB.shape[0]) > 500 or abs(imgA.shape[1] - imgB.shape[1]) > 500:
+                    return self._format_error("Spatial mismatch detected. Bi-temporal images must cover the exact same geographic extent.", task)
+
+        # Tool Execution Routing
         if "OPTICAL_SAR_ANALYSIS" in selected_tools:
             result = self._execute_fusion(request)
         elif "CHANGE_DETECTION" in selected_tools:
@@ -118,6 +135,7 @@ class AgentController:
 
         trace = [
             "Input validated",
+            "Compatibility check: Passed",
             f"Query classified → {task}",
             f"Model selected → {', '.join(selected_tools)}",
             "Area calculation completed" if "AREA_CALCULATOR" in selected_tools else "Feature extraction completed",
@@ -126,7 +144,6 @@ class AgentController:
             "Response complete"
         ]
         
-        # Day 12: Trigger the Report Generator
         clean_report = self._generate_clean_report(request.metadata, request.query, task, result)
         
         return {
@@ -139,15 +156,10 @@ class AgentController:
             "report_data": clean_report
         }
 
-    # --- DAY 12: DATA CLEANING & REPORT GENERATOR ---
     def _generate_clean_report(self, raw_metadata, query, task, result):
         cleaned_meta = {}
-        
         for key, value in raw_metadata.items():
-            # Apply standard LOWER and TRIM logic to keys
             clean_key = str(key).strip().lower()
-            
-            # Apply PROPER (title case) and TRIM to text values to standardize anomalies
             if isinstance(value, str):
                 cleaned_meta[clean_key] = value.strip().title()
             else:
@@ -283,7 +295,13 @@ class AgentController:
         return {
             "answer": message, "confidence": 100.0, "task": task, "model_used": "AGENT_VALIDATOR",
             "evidence": {"type": "error", "details": "Input Validation Failed"},
-            "trace": ["Input validated", f"Query classified → {task}", "Validation FAILED: Missing dependencies"]
+            "trace": [
+                "Input validated", 
+                "Compatibility check: FAILED",
+                f"Query classified → {task}", 
+                "Execution halted due to validation failure"
+            ],
+            "report_data": None
         }
 
 agent = AgentController()
