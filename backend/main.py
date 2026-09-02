@@ -75,53 +75,84 @@ async def upload_image(file: UploadFile = File(...)):
 
     return {"metadata": metadata, "preview": preview_base64}
 
-@app.post("/api/vqa")
-async def analyze_image(request: VQARequest):
-    query = request.query.lower()
-    
-    # AGENTIC TASK CLASSIFICATION & ROUTING
-    
-    # 1. Cross-Modal Fusion (Day 8 Logic)
-    if "both" in query or "sar" in query or "fusion" in query or "identify" in query:
-        if not request.has_sar:
-            task = "Input Validation Error"
-            model_used = "Agent Controller"
-            answer = "This analysis requires a co-registered SAR image. Please upload SAR data to proceed with fusion analysis."
-            confidence = 100.0
-            evidence = {"type": "error", "details": "Missing SAR observation"}
+
+# --- DAY 9: AGENT CONTROLLER ---
+class AgentController:
+    def __init__(self):
+        # Predefined tool registry
+        self.available_tools = [
+            "VQA", 
+            "GROUNDING", 
+            "CHANGE_DETECTION", 
+            "OPTICAL_SAR_ANALYSIS", 
+            "AREA_CALCULATOR", 
+            "REPORT_GENERATOR"
+        ]
+
+    def parse_intent(self, query: str):
+        """Simulates an LLM parsing natural language to identify the task."""
+        query = query.lower()
+        if "both" in query or "sar" in query or "fusion" in query or "identify" in query:
+            return "Cross-modal analysis", ["OPTICAL_SAR_ANALYSIS", "AREA_CALCULATOR"]
+        elif "change" in query or "difference" in query:
+            return "Bi-temporal change analysis", ["CHANGE_DETECTION", "AREA_CALCULATOR"]
+        elif "where" in query or "highlight" in query or "show" in query:
+            return "Grounding", ["GROUNDING"]
         else:
-            task = "Cross-Modal Optical-SAR Fusion"
-            model_used = "Cartosat-RISAT-Fusion-VLM"
-            answer = "By combining optical spectral data with SAR structural backscatter, I have successfully identified the built-up infrastructure (which penetrates cloud cover in radar) alongside the water-covered regions."
-            confidence = 94.1
-            evidence = {
+            return "Visual Question Answering", ["VQA"]
+
+    def execute(self, request: VQARequest):
+        task, selected_tools = self.parse_intent(request.query)
+        
+        # 1. Validation Layer
+        if "OPTICAL_SAR_ANALYSIS" in selected_tools and not request.has_sar:
+            return self._format_error("Missing SAR data. Please upload a SAR image.", task)
+        
+        if "CHANGE_DETECTION" in selected_tools and not request.has_bitemporal:
+            return self._format_error("Missing bi-temporal data. Please upload Image B.", task)
+
+        # 2. Tool Execution Routing
+        if "OPTICAL_SAR_ANALYSIS" in selected_tools:
+            result = self._execute_fusion()
+        elif "CHANGE_DETECTION" in selected_tools:
+            result = self._execute_change_detection()
+        elif "GROUNDING" in selected_tools:
+            result = self._execute_grounding(request.query)
+        else:
+            result = self._execute_vqa()
+
+        # 3. Compile Execution Trace
+        trace = f"Task detected: {task} | Tools executing: {', '.join(selected_tools)} | Validation: Passed | Status: Complete"
+        
+        return {
+            "answer": result["answer"],
+            "confidence": result["confidence"],
+            "task": task,
+            "model_used": ", ".join(selected_tools),
+            "evidence": result["evidence"],
+            "trace": trace
+        }
+
+    # Simulated specialist models / tools
+    def _execute_fusion(self):
+        return {
+            "answer": "By combining optical spectral data with SAR structural backscatter, I have successfully identified the built-up infrastructure alongside water-covered regions.",
+            "confidence": 94.1,
+            "evidence": {
                 "type": "fusion_mask",
                 "regions": [
                     {"box": [35, 50, 65, 80], "label": "Built-up (SAR/Opt)"},
                     {"box": [15, 10, 40, 45], "label": "Water Body (Opt)"}
                 ],
-                "stats": {
-                    "Co-registration": "Aligned",
-                    "SAR Backscatter Analysis": "Completed", 
-                    "Built-up Area": "22.4%",
-                    "Water Coverage": "14.1%"
-                }
+                "stats": {"Built-up Area": "22.4%", "Water Coverage": "14.1%", "Co-registration": "Aligned"}
             }
-            
-    # 2. Bi-Temporal Change Detection
-    elif "change" in query or "difference" in query:
-        if not request.has_bitemporal:
-            task = "Input Validation Error"
-            model_used = "Agent Controller"
-            answer = "This analysis requires two spatially compatible observations. Please upload Image B to proceed."
-            confidence = 100.0
-            evidence = {"type": "error", "details": "Missing secondary observation"}
-        else:
-            task = "Bi-Temporal Change Detection"
-            model_used = "CDVQA-Net-Sentinel"
-            answer = "Significant changes were detected, primarily in the northern portion of the scene. Built-up regions increased while vegetation decreased."
-            confidence = 91.2
-            evidence = {
+        }
+
+    def _execute_change_detection(self):
+        return {
+            "answer": "Significant changes were detected, primarily in the northern portion of the scene. Built-up regions increased while vegetation decreased.",
+            "confidence": 91.2,
+            "evidence": {
                 "type": "change_mask", 
                 "regions": [
                     {"box": [10, 60, 45, 90], "label": "Expansion (+14%)"}, 
@@ -129,36 +160,39 @@ async def analyze_image(request: VQARequest):
                 ],
                 "stats": {"Built-up": "+18.4%", "Vegetation": "-7.8%"}
             }
-            
-    # 3. Visual Grounding
-    elif "where" in query or "highlight" in query or "show" in query:
-        task = "Text-Guided Region Grounding"
-        model_used = "RS-Grounding-BigEarthNet-v2"
-        answer = f"I have highlighted the regions corresponding to '{request.query}' on the map."
-        confidence = 92.5
-        evidence = {
-            "type": "grounding", 
-            "regions": [
-                {"box": [20, 15, 40, 35], "label": "Detected Region 1"}, 
-                {"box": [55, 60, 80, 85], "label": "Detected Region 2"}
-            ]
+        }
+
+    def _execute_grounding(self, query):
+        return {
+            "answer": f"I have highlighted the regions corresponding to your query on the map.",
+            "confidence": 92.5,
+            "evidence": {
+                "type": "grounding", 
+                "regions": [{"box": [20, 15, 40, 35], "label": "Region 1"}, {"box": [55, 60, 80, 85], "label": "Region 2"}]
+            }
+        }
+
+    def _execute_vqa(self):
+        return {
+            "answer": "The scene exhibits dominant agricultural land-cover, interspersed built-up structures, and a prominent water feature.",
+            "confidence": 86.2,
+            "evidence": {"type": "text_only", "details": "Global scene classification summary"}
         }
         
-    # 4. Single-Image VQA Baseline
-    else:
-        task = "Single-Image Captioning / VQA"
-        model_used = "RS-VLM-FineTuned-BigEarthNet"
-        answer = "The scene exhibits dominant agricultural land-cover, interspersed built-up structures, and a prominent water feature."
-        confidence = 86.2
-        evidence = {"type": "text_only", "details": "Global scene classification summary"}
+    def _format_error(self, message, task):
+        return {
+            "answer": message,
+            "confidence": 100.0,
+            "task": task,
+            "model_used": "AGENT_VALIDATOR",
+            "evidence": {"type": "error", "details": "Input Validation Failed"},
+            "trace": f"Task detected: {task} | Tools executing: None | Validation: FAILED"
+        }
 
-    trace = f"Input Validated → Task: [{task}] → Model Selected: [{model_used}] → Output Generated"
+# Instantiate the agent globally
+agent = AgentController()
 
-    return {
-        "answer": answer,
-        "confidence": confidence,
-        "task": task,
-        "model_used": model_used,
-        "evidence": evidence,
-        "trace": trace
-    }
+@app.post("/api/vqa")
+async def analyze_image(request: VQARequest):
+    # Delegate the entire process to the Agent Controller
+    return agent.execute(request)
