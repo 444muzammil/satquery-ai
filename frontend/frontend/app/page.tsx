@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 type ChatMessage = { role: 'user' | 'ai'; text: string; confidence?: number; stats?: any };
-type BoundingBox = number[];
+type Region = { box: number[]; label: string };
 
 export default function Home() {
   const [imageA, setImageA] = useState<string | null>(null);
@@ -18,11 +18,10 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<'Original' | 'Evidence' | 'Overlay'>('Overlay');
 
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload Image A and B, then ask "What changed?"' }]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload Optical and SAR images, then ask to identify built-up and water-covered regions.' }]);
   const [analyzing, setAnalyzing] = useState(false);
   
-  const [regions, setRegions] = useState<BoundingBox[]>([]);
-  const [regionLabel, setRegionLabel] = useState<string>("");
+  const [regions, setRegions] = useState<Region[]>([]);
   const [evidenceType, setEvidenceType] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -72,16 +71,15 @@ export default function Home() {
       
       setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence, stats: data.evidence.stats }]);
 
-      if (data.evidence && data.evidence.coords) {
-        setRegions(data.evidence.coords);
-        setRegionLabel(data.evidence.label || "Detected");
+      if (data.evidence && data.evidence.regions) {
+        setRegions(data.evidence.regions);
         setEvidenceType(data.evidence.type);
       }
 
       setMetrics({
         analysis: data.task,
         confidence: `${data.confidence}%`,
-        evidence: data.evidence.stats ? 'Statistical Change Report Generated' : (data.evidence.coords ? `${data.evidence.coords.length} region(s) mapped` : 'Text Analysis'),
+        evidence: data.evidence.stats ? 'Multimodal Report Generated' : (data.evidence.regions ? `${data.evidence.regions.length} region(s) mapped` : 'Text Analysis'),
         trace: data.trace || `Model Executed: ${data.model_used}`
       });
 
@@ -108,15 +106,34 @@ export default function Home() {
     return null;
   };
 
-  const isChangeMap = evidenceType === 'change_mask';
-  const boxBorderClass = isChangeMap ? 'border-orange-500' : 'border-green-500';
-  const boxBgOverlay = isChangeMap ? 'bg-orange-500/30' : 'bg-green-500/20';
-  const boxBgEvidence = isChangeMap ? 'bg-orange-500/60' : 'bg-blue-500/40';
-  const labelBgClass = isChangeMap ? 'bg-orange-600' : (viewMode === 'Evidence' ? 'bg-blue-600' : 'bg-green-600');
+  const aspect = getActiveMeta()?.width ? `${getActiveMeta().width}/${getActiveMeta().height}` : '16/9';
 
-  // Dynamically calculate aspect ratio to allow image scaling while keeping bounding boxes intact
-  const activeMeta = getActiveMeta();
-  const aspect = activeMeta && activeMeta.width && activeMeta.height ? `${activeMeta.width}/${activeMeta.height}` : '16/9';
+  // Dynamic Box Rendering Logic to support multi-class Fusion overlays
+  const getBoxStyle = (label: string, evidenceType: string | null, viewMode: string) => {
+    let color = 'green';
+    
+    // Assign specific colors to specific classes
+    if (evidenceType === 'change_mask') color = 'orange';
+    if (evidenceType === 'fusion_mask') {
+      if (label.toLowerCase().includes('water')) color = 'blue';
+      if (label.toLowerCase().includes('built')) color = 'purple';
+    }
+
+    const isEvidence = viewMode === 'Evidence';
+    
+    const styles: Record<string, any> = {
+      'orange': { border: 'border-orange-500', bgOver: 'bg-orange-500/30', bgEv: 'bg-orange-500/60', label: 'bg-orange-600' },
+      'blue': { border: 'border-blue-500', bgOver: 'bg-blue-500/30', bgEv: 'bg-blue-500/60', label: 'bg-blue-600' },
+      'purple': { border: 'border-purple-500', bgOver: 'bg-purple-500/30', bgEv: 'bg-purple-500/60', label: 'bg-purple-600' },
+      'green': { border: 'border-green-500', bgOver: 'bg-green-500/20', bgEv: 'bg-green-500/50', label: 'bg-green-600' }
+    };
+
+    const s = styles[color];
+    return {
+      wrapper: `absolute border-2 pointer-events-none transition-all duration-500 ${s.border} ${isEvidence ? s.bgEv : s.bgOver}`,
+      label: `absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap ${s.label}`
+    };
+  };
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 p-4 gap-4 font-sans">
@@ -169,33 +186,25 @@ export default function Home() {
 
           <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-zinc-950 overflow-hidden">
             {getActiveImage() ? (
-              // SCALING FIX: This perfectly forces the image to scale to the max size while keeping aspect ratio intact for the boxes
-              <div 
-                className="relative" 
-                style={{ 
-                  aspectRatio: aspect, 
-                  height: '10000px', // Forces expansion; constrained by max-height
-                  maxWidth: '100%', 
-                  maxHeight: '100%' 
-                }}
-              >
+              <div className="relative inline-flex min-w-[60%] min-h-[60%] max-w-full max-h-full items-center justify-center" style={{ aspectRatio: aspect, height: '10000px', maxWidth: '100%', maxHeight: '100%' }}>
                 <img 
                   src={getActiveImage()!} 
                   alt="Satellite View" 
                   className={`absolute inset-0 w-full h-full object-fill transition-opacity duration-300 ${viewMode === 'Evidence' ? 'opacity-15 grayscale' : 'opacity-100'}`} 
                 />
                 
-                {viewMode !== 'Original' && regions.map((bbox, idx) => (
-                  <div 
-                    key={idx}
-                    className={`absolute border-2 pointer-events-none transition-all duration-500 ${viewMode === 'Evidence' ? `border-blue-500 ${boxBgEvidence}` : `${boxBorderClass} ${boxBgOverlay}`}`}
-                    style={{ top: `${bbox[0]}%`, left: `${bbox[1]}%`, height: `${bbox[2] - bbox[0]}%`, width: `${bbox[3] - bbox[1]}%` }}
-                  >
-                    <span className={`absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap ${labelBgClass}`}>
-                      {regionLabel} {idx + 1}
-                    </span>
-                  </div>
-                ))}
+                {viewMode !== 'Original' && regions.map((region, idx) => {
+                  const style = getBoxStyle(region.label, evidenceType, viewMode);
+                  return (
+                    <div 
+                      key={idx}
+                      className={style.wrapper}
+                      style={{ top: `${region.box[0]}%`, left: `${region.box[1]}%`, height: `${region.box[2] - region.box[0]}%`, width: `${region.box[3] - region.box[1]}%` }}
+                    >
+                      <span className={style.label}>{region.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-slate-600 flex flex-col items-center">
@@ -214,11 +223,11 @@ export default function Home() {
                 
                 {msg.stats && (
                   <div className="mt-3 bg-slate-950 p-2 rounded border border-slate-700 text-xs text-slate-300">
-                    <p className="font-bold text-slate-400 mb-1 tracking-wider text-[10px]">CHANGE SUMMARY</p>
+                    <p className="font-bold text-slate-400 mb-1 tracking-wider text-[10px]">REPORT SUMMARY</p>
                     {Object.entries(msg.stats).map(([key, val]) => (
                       <div key={key} className="flex justify-between py-0.5 border-b border-slate-800 last:border-0">
                         <span>{key}</span>
-                        <span className={String(val).startsWith('+') ? 'text-orange-400 font-bold' : 'text-green-400 font-bold'}>{String(val)}</span>
+                        <span className={String(val).includes('%') ? (String(val).startsWith('+') ? 'text-orange-400 font-bold' : 'text-blue-400 font-bold') : 'text-slate-400'}>{String(val)}</span>
                       </div>
                     ))}
                   </div>
@@ -227,14 +236,14 @@ export default function Home() {
                 {msg.confidence && <p className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">Confidence: {msg.confidence}%</p>}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Agent is generating statistics...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Processing Cross-Modal Data...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
             <textarea 
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
               rows={3}
-              placeholder='e.g., "What changed?"'
+              placeholder='e.g., "Identify built-up and water regions..."'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); } }}

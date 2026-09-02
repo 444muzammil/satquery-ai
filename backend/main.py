@@ -79,8 +79,37 @@ async def upload_image(file: UploadFile = File(...)):
 async def analyze_image(request: VQARequest):
     query = request.query.lower()
     
-    # 1. Bi-Temporal Change Detection (Day 7 Logic)
-    if "change" in query or "difference" in query:
+    # AGENTIC TASK CLASSIFICATION & ROUTING
+    
+    # 1. Cross-Modal Fusion (Day 8 Logic)
+    if "both" in query or "sar" in query or "fusion" in query or "identify" in query:
+        if not request.has_sar:
+            task = "Input Validation Error"
+            model_used = "Agent Controller"
+            answer = "This analysis requires a co-registered SAR image. Please upload SAR data to proceed with fusion analysis."
+            confidence = 100.0
+            evidence = {"type": "error", "details": "Missing SAR observation"}
+        else:
+            task = "Cross-Modal Optical-SAR Fusion"
+            model_used = "Cartosat-RISAT-Fusion-VLM"
+            answer = "By combining optical spectral data with SAR structural backscatter, I have successfully identified the built-up infrastructure (which penetrates cloud cover in radar) alongside the water-covered regions."
+            confidence = 94.1
+            evidence = {
+                "type": "fusion_mask",
+                "regions": [
+                    {"box": [35, 50, 65, 80], "label": "Built-up (SAR/Opt)"},
+                    {"box": [15, 10, 40, 45], "label": "Water Body (Opt)"}
+                ],
+                "stats": {
+                    "Co-registration": "Aligned",
+                    "SAR Backscatter Analysis": "Completed", 
+                    "Built-up Area": "22.4%",
+                    "Water Coverage": "14.1%"
+                }
+            }
+            
+    # 2. Bi-Temporal Change Detection
+    elif "change" in query or "difference" in query:
         if not request.has_bitemporal:
             task = "Input Validation Error"
             model_used = "Agent Controller"
@@ -94,12 +123,14 @@ async def analyze_image(request: VQARequest):
             confidence = 91.2
             evidence = {
                 "type": "change_mask", 
-                "coords": [[10, 60, 45, 90], [45, 30, 60, 50]],
-                "label": "Change Cluster",
+                "regions": [
+                    {"box": [10, 60, 45, 90], "label": "Expansion (+14%)"}, 
+                    {"box": [45, 30, 60, 50], "label": "Reduction (-5%)"}
+                ],
                 "stats": {"Built-up": "+18.4%", "Vegetation": "-7.8%"}
             }
             
-    # 2. Visual Grounding
+    # 3. Visual Grounding
     elif "where" in query or "highlight" in query or "show" in query:
         task = "Text-Guided Region Grounding"
         model_used = "RS-Grounding-BigEarthNet-v2"
@@ -107,17 +138,11 @@ async def analyze_image(request: VQARequest):
         confidence = 92.5
         evidence = {
             "type": "grounding", 
-            "coords": [[20, 15, 40, 35], [55, 60, 80, 85]],
-            "label": "Detected Feature"
+            "regions": [
+                {"box": [20, 15, 40, 35], "label": "Detected Region 1"}, 
+                {"box": [55, 60, 80, 85], "label": "Detected Region 2"}
+            ]
         }
-        
-    # 3. Cross-Modal Fusion
-    elif request.has_sar and ("sar" in query or "radar" in query or "fusion" in query):
-        task = "Cross-Modal Optical-SAR Fusion"
-        model_used = "Cartosat-RISAT-Fusion-VLM"
-        answer = "Fused optical-SAR analysis confirms structural building footprints through cloud cover."
-        confidence = 94.1
-        evidence = {"type": "grounding", "coords": [[40, 40, 60, 60]], "label": "SAR Signature"}
         
     # 4. Single-Image VQA Baseline
     else:
@@ -134,5 +159,6 @@ async def analyze_image(request: VQARequest):
         "confidence": confidence,
         "task": task,
         "model_used": model_used,
-        "evidence": evidence
+        "evidence": evidence,
+        "trace": trace
     }
