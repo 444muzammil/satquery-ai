@@ -18,12 +18,16 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<'Original' | 'Evidence' | 'Overlay'>('Overlay');
 
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload imagery and ask a query to execute live AI inference.' }]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'SatQuery AI initialized. Upload satellite imagery to begin.' }]);
   const [analyzing, setAnalyzing] = useState(false);
   
   const [regions, setRegions] = useState<Region[]>([]);
   const [evidenceType, setEvidenceType] = useState<string | null>(null);
   const [hoveredRegion, setHoveredRegion] = useState<number | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  
+  // Day 12: Report State
+  const [reportData, setReportData] = useState<any>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState({ analysis: 'Awaiting query...', confidence: '--%', trace: ['System idle'] as string[] });
@@ -36,17 +40,24 @@ export default function Home() {
 
     setLoading(slot);
     setRegions([]);
+    setConnectionError(null);
     const formData = new FormData();
     formData.append('file', file);
 
     try {
       const response = await fetch('http://localhost:8000/api/upload', { method: 'POST', body: formData });
+      if (!response.ok) throw new Error("Server responded with error status");
       const data = await response.json();
 
       if (slot === 'A') { setMetaA(data.metadata); setImageA(data.preview); setActiveTab('A'); }
       else if (slot === 'B') { setMetaB(data.metadata); setImageB(data.preview); setActiveTab('B'); }
       else if (slot === 'SAR') { setMetaSar(data.metadata); setSarImage(data.preview); setActiveTab('SAR'); }
-    } catch (error) { console.error("Upload failed", error); } finally { setLoading(null); }
+    } catch (error) {
+      console.error("Upload failed", error);
+      setConnectionError("Backend server unreachable. Ensure FastAPI is running on port 8000.");
+    } finally {
+      setLoading(null);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -59,10 +70,14 @@ export default function Home() {
     setRegions([]);
     setEvidenceType(null);
     setHoveredRegion(null);
+    setConnectionError(null);
+    setReportData(null);
     setViewMode('Overlay'); 
     setMetrics(prev => ({ ...prev, trace: ['Agent Controller -> Processing task...'] }));
 
     try {
+      const activeMetadata = { ...(metaA || {}), ...(metaB || {}), ...(metaSar || {}) };
+      
       const response = await fetch('http://localhost:8000/api/vqa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,17 +87,22 @@ export default function Home() {
           has_sar: !!sarImage, 
           has_bitemporal: !!imageB,
           image_b_base64: imageB || "",
-          sar_base64: sarImage || ""
+          sar_base64: sarImage || "",
+          metadata: activeMetadata // Pass metadata for backend cleaning
         }),
       });
 
+      if (!response.ok) throw new Error("Analysis failed on server");
       const data = await response.json();
+      
       setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence, stats: data.evidence.stats }]);
 
       if (data.evidence && data.evidence.regions) {
         setRegions(data.evidence.regions);
         setEvidenceType(data.evidence.type);
       }
+
+      setReportData(data.report_data);
 
       setMetrics({
         analysis: data.task,
@@ -95,8 +115,22 @@ export default function Home() {
 
     } catch (error) {
       console.error("Analysis failed", error);
-      setChatHistory([...newChat, { role: 'ai', text: "Error connecting to AI backend." }]);
-    } finally { setAnalyzing(false); }
+      setConnectionError("Failed to reach AI backend. Verify uvicorn server status.");
+      setChatHistory([...newChat, { role: 'ai', text: "Connection error: FastAPI backend is not responding." }]);
+    } finally { 
+      setAnalyzing(false); 
+    }
+  };
+
+  const downloadReport = () => {
+    if (!reportData) return;
+    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SatQuery_Analysis_Report_${new Date().getTime()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const getActiveImage = () => {
@@ -142,7 +176,14 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 p-4 gap-4 font-sans">
       <header className="flex justify-between items-center pb-2 border-b border-slate-800">
-        <h1 className="text-2xl font-bold text-white tracking-tight">SatQuery AI</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-white tracking-tight">SatQuery AI</h1>
+          {connectionError && (
+            <span className="text-xs bg-red-900/60 border border-red-700 text-red-300 px-2.5 py-0.5 rounded">
+              {connectionError}
+            </span>
+          )}
+        </div>
         <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">SIH26167 Prototype</span>
       </header>
 
@@ -213,7 +254,17 @@ export default function Home() {
         </main>
 
         <aside className="w-80 bg-slate-900 border border-slate-800 rounded-xl flex flex-col">
-          <div className="p-4 border-b border-slate-800"><h2 className="text-sm font-bold text-slate-400 tracking-wider">AI ASSISTANT</h2></div>
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+            <h2 className="text-sm font-bold text-slate-400 tracking-wider">AI ASSISTANT</h2>
+            {reportData && (
+              <button 
+                onClick={downloadReport} 
+                className="text-[10px] font-bold bg-green-600/80 hover:bg-green-500 text-white px-2 py-1 rounded transition-colors"
+              >
+                Download Report
+              </button>
+            )}
+          </div>
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
             {chatHistory.map((msg, idx) => (
               <div key={idx} className={`p-3 rounded-lg text-sm w-11/12 ${msg.role === 'user' ? 'bg-blue-900/50 text-blue-100 self-end ml-auto border border-blue-800' : 'bg-slate-800 text-slate-300'}`}>
@@ -231,7 +282,7 @@ export default function Home() {
                 )}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Running Live AI Inference...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Running live AI inference...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
