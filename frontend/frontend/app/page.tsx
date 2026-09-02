@@ -18,21 +18,15 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<'Original' | 'Evidence' | 'Overlay'>('Overlay');
 
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload imagery and ask a query to view execution traces and interactive evidence.' }]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload imagery and ask a query to execute live AI inference.' }]);
   const [analyzing, setAnalyzing] = useState(false);
   
   const [regions, setRegions] = useState<Region[]>([]);
   const [evidenceType, setEvidenceType] = useState<string | null>(null);
-  
-  // DAY 10: Interactive state for hovering over evidence list
   const [hoveredRegion, setHoveredRegion] = useState<number | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [metrics, setMetrics] = useState({ 
-    analysis: 'Awaiting query...', 
-    confidence: '--%', 
-    trace: ['System idle'] as string[] 
-  });
+  const [metrics, setMetrics] = useState({ analysis: 'Awaiting query...', confidence: '--%', trace: ['System idle'] as string[] });
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
@@ -72,11 +66,17 @@ export default function Home() {
       const response = await fetch('http://localhost:8000/api/vqa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: imageA || "", query: query, has_sar: !!sarImage, has_bitemporal: !!imageB }),
+        body: JSON.stringify({ 
+          image_base64: imageA || "", 
+          query: query, 
+          has_sar: !!sarImage, 
+          has_bitemporal: !!imageB,
+          image_b_base64: imageB || "",
+          sar_base64: sarImage || ""
+        }),
       });
 
       const data = await response.json();
-      
       setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence, stats: data.evidence.stats }]);
 
       if (data.evidence && data.evidence.regions) {
@@ -131,8 +131,6 @@ export default function Home() {
       'green': { border: 'border-green-500', bgOver: 'bg-green-500/20', bgEv: 'bg-green-500/50', label: 'bg-green-600' }
     };
     const s = styles[color];
-
-    // DAY 10: Apply a bright white glowing border if this specific region is hovered in the list
     const hoverEffects = isHovered ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.8)] z-50 scale-[1.01]' : `${s.border} z-10`;
 
     return {
@@ -233,7 +231,7 @@ export default function Home() {
                 )}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Agent is processing data...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Running Live AI Inference...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
@@ -250,22 +248,17 @@ export default function Home() {
         </aside>
       </div>
 
-      {/* DAY 10: UPDATED METRICS DASHBOARD */}
       <div className="h-44 flex gap-4">
-        
-        {/* Analysis Overview */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">ANALYSIS</h3>
           <div className="flex-1 flex items-center justify-center text-slate-200 text-sm font-medium text-center">{metrics.analysis}</div>
         </div>
         
-        {/* Confidence Score */}
         <div className="w-48 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">CONFIDENCE</h3>
           <div className="flex-1 flex items-center justify-center text-4xl font-light text-slate-200">{metrics.confidence}</div>
         </div>
         
-        {/* Interactive Evidence List */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col overflow-hidden">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">EVIDENCE</h3>
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -289,7 +282,6 @@ export default function Home() {
           </div>
         </div>
         
-        {/* Observable Execution Trace Checklist */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col overflow-hidden">
           <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">ANALYSIS TRACE</h3>
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -309,7 +301,6 @@ export default function Home() {
             )}
           </div>
         </div>
-
       </div>
     </div>
   );
