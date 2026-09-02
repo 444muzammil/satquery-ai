@@ -46,14 +46,12 @@ async def upload_image(file: UploadFile = File(...)):
                     "resolution": dataset.res
                 })
                 
-                # BUG FIX: Safely handle 1, 2, 3, or 4+ band images to prevent PIL crashes
                 if dataset.count == 1 or dataset.count == 2:
-                    img_array = dataset.read(1) # Force grayscale representation
+                    img_array = dataset.read(1)
                 else:
-                    img_array = dataset.read([1, 2, 3]) # Extract RGB
+                    img_array = dataset.read([1, 2, 3])
                     img_array = np.moveaxis(img_array, 0, -1)
                 
-                # Normalize safely avoiding division by zero
                 val_min, val_max = np.min(img_array), np.max(img_array)
                 if val_max - val_min == 0:
                     img_array = np.zeros_like(img_array, dtype=np.uint8)
@@ -77,33 +75,43 @@ async def upload_image(file: UploadFile = File(...)):
 
     return {"metadata": metadata, "preview": preview_base64}
 
-# Keep all your imports and the /api/upload endpoint exactly as they are.
-# Only replace the /api/vqa endpoint below:
-
 @app.post("/api/vqa")
 async def analyze_image(request: VQARequest):
     query = request.query.lower()
     
-    # AGENTIC TASK CLASSIFICATION & ROUTING
-    if "where" in query or "highlight" in query or "show" in query:
+    # 1. Bi-Temporal Change Detection (Day 7 Logic)
+    if "change" in query or "difference" in query:
+        if not request.has_bitemporal:
+            task = "Input Validation Error"
+            model_used = "Agent Controller"
+            answer = "This analysis requires two spatially compatible observations. Please upload Image B to proceed."
+            confidence = 100.0
+            evidence = {"type": "error", "details": "Missing secondary observation"}
+        else:
+            task = "Bi-Temporal Change Detection"
+            model_used = "CDVQA-Net-Sentinel"
+            answer = "Significant changes were detected, primarily in the northern portion of the scene. Built-up regions increased while vegetation decreased."
+            confidence = 91.2
+            evidence = {
+                "type": "change_mask", 
+                "coords": [[10, 60, 45, 90], [45, 30, 60, 50]],
+                "label": "Change Cluster",
+                "stats": {"Built-up": "+18.4%", "Vegetation": "-7.8%"}
+            }
+            
+    # 2. Visual Grounding
+    elif "where" in query or "highlight" in query or "show" in query:
         task = "Text-Guided Region Grounding"
         model_used = "RS-Grounding-BigEarthNet-v2"
         answer = f"I have highlighted the regions corresponding to '{request.query}' on the map."
         confidence = 92.5
-        # Returning multiple bounding boxes [ymin, xmin, ymax, xmax] in percentages
         evidence = {
             "type": "grounding", 
             "coords": [[20, 15, 40, 35], [55, 60, 80, 85]],
-            "label": "Detected Features"
+            "label": "Detected Feature"
         }
         
-    elif ("change" in query or "difference" in query) and request.has_bitemporal:
-        task = "Bi-Temporal Change Detection"
-        model_used = "CDVQA-Net-Sentinel"
-        answer = "Built-up infrastructure increased by ~14.2% across the north-eastern quadrant between observations."
-        confidence = 88.7
-        evidence = {"type": "change_mask", "region": "NE Quadrant (+14.2% expansion)", "coords": [[10, 60, 45, 90]]}
-        
+    # 3. Cross-Modal Fusion
     elif request.has_sar and ("sar" in query or "radar" in query or "fusion" in query):
         task = "Cross-Modal Optical-SAR Fusion"
         model_used = "Cartosat-RISAT-Fusion-VLM"
@@ -111,6 +119,7 @@ async def analyze_image(request: VQARequest):
         confidence = 94.1
         evidence = {"type": "grounding", "coords": [[40, 40, 60, 60]], "label": "SAR Signature"}
         
+    # 4. Single-Image VQA Baseline
     else:
         task = "Single-Image Captioning / VQA"
         model_used = "RS-VLM-FineTuned-BigEarthNet"
@@ -125,6 +134,5 @@ async def analyze_image(request: VQARequest):
         "confidence": confidence,
         "task": task,
         "model_used": model_used,
-        "evidence": evidence,
-        "trace": trace
+        "evidence": evidence
     }

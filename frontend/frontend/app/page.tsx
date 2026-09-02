@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 
-type ChatMessage = { role: 'user' | 'ai'; text: string; confidence?: number; };
+type ChatMessage = { role: 'user' | 'ai'; text: string; confidence?: number; stats?: any };
 type BoundingBox = number[];
 
 export default function Home() {
@@ -15,20 +15,17 @@ export default function Home() {
 
   const [loading, setLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'A' | 'B' | 'SAR'>('A');
-  
-  // NEW: View controls for Day 5
   const [viewMode, setViewMode] = useState<'Original' | 'Evidence' | 'Overlay'>('Overlay');
 
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Ask "Where are the water bodies?" to test visual grounding.' }]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload Image A and B, then ask "What changed?"' }]);
   const [analyzing, setAnalyzing] = useState(false);
   
-  // Updated evidence state to support multiple regions
   const [regions, setRegions] = useState<BoundingBox[]>([]);
   const [regionLabel, setRegionLabel] = useState<string>("");
+  const [evidenceType, setEvidenceType] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-
   const [metrics, setMetrics] = useState({ analysis: 'Awaiting query...', confidence: '--%', evidence: 'No regions detected', trace: 'System idle' });
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
@@ -60,8 +57,9 @@ export default function Home() {
     setQuery("");
     setAnalyzing(true);
     setRegions([]);
-    setViewMode('Overlay'); // Default to overlay when new analysis runs
-    setMetrics(prev => ({ ...prev, trace: 'Agent Controller -> Executing Grounding...' }));
+    setEvidenceType(null);
+    setViewMode('Overlay'); 
+    setMetrics(prev => ({ ...prev, trace: 'Agent Controller -> Executing Task...' }));
 
     try {
       const response = await fetch('http://localhost:8000/api/vqa', {
@@ -71,18 +69,20 @@ export default function Home() {
       });
 
       const data = await response.json();
-      setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence }]);
+      
+      setChatHistory([...newChat, { role: 'ai', text: data.answer, confidence: data.confidence, stats: data.evidence.stats }]);
 
       if (data.evidence && data.evidence.coords) {
         setRegions(data.evidence.coords);
         setRegionLabel(data.evidence.label || "Detected");
+        setEvidenceType(data.evidence.type);
       }
 
       setMetrics({
         analysis: data.task,
         confidence: `${data.confidence}%`,
-        evidence: data.evidence.coords ? `${data.evidence.coords.length} region(s) grounded` : 'Text Analysis',
-        trace: data.trace
+        evidence: data.evidence.stats ? 'Statistical Change Report Generated' : (data.evidence.coords ? `${data.evidence.coords.length} region(s) mapped` : 'Text Analysis'),
+        trace: data.trace || `Model Executed: ${data.model_used}`
       });
 
       if (data.task === "Bi-Temporal Change Detection" && imageB) setActiveTab('B');
@@ -100,6 +100,23 @@ export default function Home() {
     if (activeTab === 'SAR') return sarImage;
     return null;
   };
+
+  const getActiveMeta = () => {
+    if (activeTab === 'A') return metaA;
+    if (activeTab === 'B') return metaB;
+    if (activeTab === 'SAR') return metaSar;
+    return null;
+  };
+
+  const isChangeMap = evidenceType === 'change_mask';
+  const boxBorderClass = isChangeMap ? 'border-orange-500' : 'border-green-500';
+  const boxBgOverlay = isChangeMap ? 'bg-orange-500/30' : 'bg-green-500/20';
+  const boxBgEvidence = isChangeMap ? 'bg-orange-500/60' : 'bg-blue-500/40';
+  const labelBgClass = isChangeMap ? 'bg-orange-600' : (viewMode === 'Evidence' ? 'bg-blue-600' : 'bg-green-600');
+
+  // Dynamically calculate aspect ratio to allow image scaling while keeping bounding boxes intact
+  const activeMeta = getActiveMeta();
+  const aspect = activeMeta && activeMeta.width && activeMeta.height ? `${activeMeta.width}/${activeMeta.height}` : '16/9';
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 p-4 gap-4 font-sans">
@@ -136,14 +153,12 @@ export default function Home() {
 
         <main className="flex-1 bg-black border border-slate-800 rounded-xl flex flex-col relative overflow-hidden">
           
-          {/* Top-Left: Image Selection Tabs */}
           <div className="absolute top-3 left-3 z-10 flex gap-2 bg-slate-900/80 p-1 rounded-lg border border-slate-800 backdrop-blur-sm">
             <button onClick={() => setActiveTab('A')} className={`px-3 py-1 text-xs rounded transition-colors ${activeTab === 'A' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'}`}>Image A</button>
             <button onClick={() => setActiveTab('B')} disabled={!imageB} className={`px-3 py-1 text-xs rounded transition-colors ${activeTab === 'B' ? 'bg-blue-600 text-white font-bold' : 'text-slate-500 disabled:opacity-40'}`}>Image B</button>
             <button onClick={() => setActiveTab('SAR')} disabled={!sarImage} className={`px-3 py-1 text-xs rounded transition-colors ${activeTab === 'SAR' ? 'bg-blue-600 text-white font-bold' : 'text-slate-500 disabled:opacity-40'}`}>SAR View</button>
           </div>
 
-          {/* Top-Right: Evidence View Controls */}
           {regions.length > 0 && (
             <div className="absolute top-3 right-3 z-10 flex gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800 backdrop-blur-sm">
               <button onClick={() => setViewMode('Original')} className={`px-3 py-1 text-xs rounded transition-colors ${viewMode === 'Original' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Original</button>
@@ -152,24 +167,31 @@ export default function Home() {
             </div>
           )}
 
-          <div className="flex-1 flex items-center justify-center relative w-full h-full">
+          <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-zinc-950 overflow-hidden">
             {getActiveImage() ? (
-              <div className="relative w-full h-full flex items-center justify-center bg-zinc-950">
-                {/* Conditionally hide the base image if in 'Evidence' mode (showing only the mask representation) */}
+              // SCALING FIX: This perfectly forces the image to scale to the max size while keeping aspect ratio intact for the boxes
+              <div 
+                className="relative" 
+                style={{ 
+                  aspectRatio: aspect, 
+                  height: '10000px', // Forces expansion; constrained by max-height
+                  maxWidth: '100%', 
+                  maxHeight: '100%' 
+                }}
+              >
                 <img 
                   src={getActiveImage()!} 
                   alt="Satellite View" 
-                  className={`object-contain max-w-full max-h-full transition-opacity duration-300 ${viewMode === 'Evidence' ? 'opacity-10 grayscale' : 'opacity-100'}`} 
+                  className={`absolute inset-0 w-full h-full object-fill transition-opacity duration-300 ${viewMode === 'Evidence' ? 'opacity-15 grayscale' : 'opacity-100'}`} 
                 />
                 
-                {/* Map through all detected regions and render bounding boxes */}
                 {viewMode !== 'Original' && regions.map((bbox, idx) => (
                   <div 
                     key={idx}
-                    className={`absolute border-2 pointer-events-none transition-all duration-500 ${viewMode === 'Evidence' ? 'border-blue-500 bg-blue-500/40' : 'border-green-500 bg-green-500/20'}`}
+                    className={`absolute border-2 pointer-events-none transition-all duration-500 ${viewMode === 'Evidence' ? `border-blue-500 ${boxBgEvidence}` : `${boxBorderClass} ${boxBgOverlay}`}`}
                     style={{ top: `${bbox[0]}%`, left: `${bbox[1]}%`, height: `${bbox[2] - bbox[0]}%`, width: `${bbox[3] - bbox[1]}%` }}
                   >
-                    <span className={`absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap ${viewMode === 'Evidence' ? 'bg-blue-600' : 'bg-green-600'}`}>
+                    <span className={`absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap ${labelBgClass}`}>
                       {regionLabel} {idx + 1}
                     </span>
                   </div>
@@ -189,22 +211,35 @@ export default function Home() {
             {chatHistory.map((msg, idx) => (
               <div key={idx} className={`p-3 rounded-lg text-sm w-11/12 ${msg.role === 'user' ? 'bg-blue-900/50 text-blue-100 self-end ml-auto border border-blue-800' : 'bg-slate-800 text-slate-300'}`}>
                 <p>{msg.text}</p>
-                {msg.confidence && <p className="text-xs text-slate-500 mt-2 border-t border-slate-700 pt-1">Confidence: {msg.confidence}%</p>}
+                
+                {msg.stats && (
+                  <div className="mt-3 bg-slate-950 p-2 rounded border border-slate-700 text-xs text-slate-300">
+                    <p className="font-bold text-slate-400 mb-1 tracking-wider text-[10px]">CHANGE SUMMARY</p>
+                    {Object.entries(msg.stats).map(([key, val]) => (
+                      <div key={key} className="flex justify-between py-0.5 border-b border-slate-800 last:border-0">
+                        <span>{key}</span>
+                        <span className={String(val).startsWith('+') ? 'text-orange-400 font-bold' : 'text-green-400 font-bold'}>{String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {msg.confidence && <p className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">Confidence: {msg.confidence}%</p>}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Agent is executing grounding task...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Agent is generating statistics...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
             <textarea 
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
               rows={3}
-              placeholder='e.g., "Where are the water bodies?"'
+              placeholder='e.g., "What changed?"'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); } }}
             ></textarea>
-            <button onClick={handleAnalyze} disabled={analyzing || !imageA} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors">Analyze</button>
+            <button onClick={handleAnalyze} disabled={analyzing || (!imageA && !imageB && !sarImage)} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors">Analyze</button>
           </div>
         </aside>
       </div>
@@ -212,8 +247,8 @@ export default function Home() {
       <div className="h-40 flex gap-4">
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">ANALYSIS</h3><div className="flex-1 flex items-center justify-center text-slate-200 text-sm font-medium text-center">{metrics.analysis}</div></div>
         <div className="w-48 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">CONFIDENCE</h3><div className="flex-1 flex items-center justify-center text-3xl font-light text-slate-200">{metrics.confidence}</div></div>
-        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EVIDENCE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-sm text-center">{metrics.evidence}</div></div>
-        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EXECUTION TRACE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-xs text-center px-2">{metrics.trace}</div></div>
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EVIDENCE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-sm text-center px-2">{metrics.evidence}</div></div>
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EXECUTION TRACE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-[10px] text-center px-2 leading-relaxed">{metrics.trace}</div></div>
       </div>
     </div>
   );
