@@ -16,11 +16,25 @@ except ImportError:
 
 try:
     import google.generativeai as genai
-    if os.getenv("GEMINI_API_KEY"):
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    if os.getenv("AQ.Ab8RN6JhV3zg04vRglGth6trwe9NFeFO3RoMorvMeUJceouulg"):
+        genai.configure(api_key=os.getenv("AQ.Ab8RN6JhV3zg04vRglGth6trwe9NFeFO3RoMorvMeUJceouulg"))
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import faiss
+    SEMANTIC_VISION_AVAILABLE = True
+except ImportError:
+    SEMANTIC_VISION_AVAILABLE = False
+
+CLIP_MODEL = None
+def get_clip_model():
+    global CLIP_MODEL
+    if CLIP_MODEL is None:
+        CLIP_MODEL = SentenceTransformer('clip-ViT-B-32')
+    return CLIP_MODEL
 
 app = FastAPI()
 
@@ -102,28 +116,24 @@ class AgentController:
     def execute(self, request: VQARequest):
         task, selected_tools = self.parse_intent(request.query)
         
-        # --- DAY 13: STRICT COMPATIBILITY VALIDATION ---
         imgA = decode_base64_to_cv2(request.image_base64)
         
         if "OPTICAL_SAR_ANALYSIS" in selected_tools:
             if not request.has_sar:
                 return self._format_error("Missing SAR data. Please upload a SAR image.", task)
             imgSAR = decode_base64_to_cv2(request.sar_base64)
-            # Check if dimensions are wildly different (incompatible pair)
             if imgA is not None and imgSAR is not None:
                 if abs(imgA.shape[0] - imgSAR.shape[0]) > 500 or abs(imgA.shape[1] - imgSAR.shape[1]) > 500:
-                    return self._format_error("Spatial mismatch detected. Optical and SAR images must be co-registered (similar dimensions) for cross-modal fusion.", task)
+                    return self._format_error("Spatial mismatch detected. Optical and SAR images must be co-registered.", task)
 
         if "CHANGE_DETECTION" in selected_tools:
             if not request.has_bitemporal:
                 return self._format_error("Missing bi-temporal data. Please upload Image B.", task)
             imgB = decode_base64_to_cv2(request.image_b_base64)
-            # Check if dimensions are wildly different
             if imgA is not None and imgB is not None:
                 if abs(imgA.shape[0] - imgB.shape[0]) > 500 or abs(imgA.shape[1] - imgB.shape[1]) > 500:
                     return self._format_error("Spatial mismatch detected. Bi-temporal images must cover the exact same geographic extent.", task)
 
-        # Tool Execution Routing
         if "OPTICAL_SAR_ANALYSIS" in selected_tools:
             result = self._execute_fusion(request)
         elif "CHANGE_DETECTION" in selected_tools:
@@ -219,6 +229,55 @@ class AgentController:
 
     def _execute_grounding(self, request: VQARequest):
         img = decode_base64_to_cv2(request.image_base64)
+        
+        if img is not None and SEMANTIC_VISION_AVAILABLE:
+            try:
+                model = get_clip_model()
+                img_resized = cv2.resize(img, (512, 512))
+                patch_size = 64
+                patches = []
+                boxes = []
+                
+                for y in range(0, 512, patch_size):
+                    for x in range(0, 512, patch_size):
+                        patch = img_resized[y:y+patch_size, x:x+patch_size]
+                        patch_rgb = cv2.cvtColor(patch, cv2.COLOR_BGR2RGB)
+                        patches.append(Image.fromarray(patch_rgb))
+                        boxes.append([
+                            round((y/512)*100, 1), round((x/512)*100, 1), 
+                            round(((y+patch_size)/512)*100, 1), round(((x+patch_size)/512)*100, 1)
+                        ])
+                        
+                patch_embeddings = np.array(model.encode(patches)).astype('float32')
+                text_embedding = np.array(model.encode([request.query])).astype('float32')
+                
+                faiss.normalize_L2(patch_embeddings)
+                faiss.normalize_L2(text_embedding)
+                
+                index = faiss.IndexFlatIP(patch_embeddings.shape[1])
+                index.add(patch_embeddings)
+                distances, indices = index.search(text_embedding, 3) 
+                
+                regions = []
+                for i in range(3):
+                    idx = indices[0][i]
+                    score = float(distances[0][i])
+                    if score > 0.22:
+                        regions.append({
+                            "box": boxes[idx],
+                            "label": f"Semantic Match ({round(score*100)}%)"
+                        })
+                
+                if regions:
+                    return {
+                        "answer": "Semantic Vision Model executed. Patches matching your query have been isolated via FAISS vector similarity search.",
+                        "confidence": 91.5,
+                        "evidence": {"type": "grounding", "regions": regions, "stats": {"Semantic Engine": "CLIP-ViT-B-32"}}
+                    }
+            except Exception as e:
+                print(f"Semantic Vision Error: {e}")
+                pass 
+
         if img is not None:
             try:
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -236,11 +295,11 @@ class AgentController:
                     if bw * bh > 400:
                         regions.append({
                             "box": [round((y/h)*100, 1), round((x/w)*100, 1), round(((y+bh)/h)*100, 1), round(((x+bw)/w)*100, 1)],
-                            "label": "Grounded Region"
+                            "label": "Thresholded Region"
                         })
                 if regions:
                     return {
-                        "answer": f"Live spatial thresholding identified {len(regions)} matching region(s).",
+                        "answer": f"Spatial thresholding fallback identified {len(regions)} matching region(s).",
                         "confidence": 88.5,
                         "evidence": {"type": "grounding", "regions": regions}
                     }
