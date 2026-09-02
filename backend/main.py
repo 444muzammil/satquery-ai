@@ -76,10 +76,8 @@ async def upload_image(file: UploadFile = File(...)):
     return {"metadata": metadata, "preview": preview_base64}
 
 
-# --- DAY 9: AGENT CONTROLLER ---
 class AgentController:
     def __init__(self):
-        # Predefined tool registry
         self.available_tools = [
             "VQA", 
             "GROUNDING", 
@@ -90,7 +88,6 @@ class AgentController:
         ]
 
     def parse_intent(self, query: str):
-        """Simulates an LLM parsing natural language to identify the task."""
         query = query.lower()
         if "both" in query or "sar" in query or "fusion" in query or "identify" in query:
             return "Cross-modal analysis", ["OPTICAL_SAR_ANALYSIS", "AREA_CALCULATOR"]
@@ -104,14 +101,14 @@ class AgentController:
     def execute(self, request: VQARequest):
         task, selected_tools = self.parse_intent(request.query)
         
-        # 1. Validation Layer
+        # Validation Layer
         if "OPTICAL_SAR_ANALYSIS" in selected_tools and not request.has_sar:
             return self._format_error("Missing SAR data. Please upload a SAR image.", task)
         
         if "CHANGE_DETECTION" in selected_tools and not request.has_bitemporal:
             return self._format_error("Missing bi-temporal data. Please upload Image B.", task)
 
-        # 2. Tool Execution Routing
+        # Tool Execution Routing
         if "OPTICAL_SAR_ANALYSIS" in selected_tools:
             result = self._execute_fusion()
         elif "CHANGE_DETECTION" in selected_tools:
@@ -121,8 +118,15 @@ class AgentController:
         else:
             result = self._execute_vqa()
 
-        # 3. Compile Execution Trace
-        trace = f"Task detected: {task} | Tools executing: {', '.join(selected_tools)} | Validation: Passed | Status: Complete"
+        # DAY 10: Array-based Observable Execution Trace
+        trace = [
+            "Input validated",
+            f"Query classified → {task}",
+            f"Model selected → {', '.join(selected_tools)}",
+            "Area calculation completed" if "AREA_CALCULATOR" in selected_tools else "Feature extraction completed",
+            "Evidence generated",
+            "Response generated"
+        ]
         
         return {
             "answer": result["answer"],
@@ -133,7 +137,6 @@ class AgentController:
             "trace": trace
         }
 
-    # Simulated specialist models / tools
     def _execute_fusion(self):
         return {
             "answer": "By combining optical spectral data with SAR structural backscatter, I have successfully identified the built-up infrastructure alongside water-covered regions.",
@@ -186,13 +189,15 @@ class AgentController:
             "task": task,
             "model_used": "AGENT_VALIDATOR",
             "evidence": {"type": "error", "details": "Input Validation Failed"},
-            "trace": f"Task detected: {task} | Tools executing: None | Validation: FAILED"
+            "trace": [
+                "Input validated",
+                f"Query classified → {task}",
+                "Validation FAILED: Missing dependencies"
+            ]
         }
 
-# Instantiate the agent globally
 agent = AgentController()
 
 @app.post("/api/vqa")
 async def analyze_image(request: VQARequest):
-    # Delegate the entire process to the Agent Controller
     return agent.execute(request)

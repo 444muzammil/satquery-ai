@@ -18,14 +18,21 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<'Original' | 'Evidence' | 'Overlay'>('Overlay');
 
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload Optical and SAR images, then ask to identify built-up and water-covered regions.' }]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{ role: 'ai', text: 'Welcome. Upload imagery and ask a query to view execution traces and interactive evidence.' }]);
   const [analyzing, setAnalyzing] = useState(false);
   
   const [regions, setRegions] = useState<Region[]>([]);
   const [evidenceType, setEvidenceType] = useState<string | null>(null);
   
+  // DAY 10: Interactive state for hovering over evidence list
+  const [hoveredRegion, setHoveredRegion] = useState<number | null>(null);
+  
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [metrics, setMetrics] = useState({ analysis: 'Awaiting query...', confidence: '--%', evidence: 'No regions detected', trace: 'System idle' });
+  const [metrics, setMetrics] = useState({ 
+    analysis: 'Awaiting query...', 
+    confidence: '--%', 
+    trace: ['System idle'] as string[] 
+  });
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
@@ -57,8 +64,9 @@ export default function Home() {
     setAnalyzing(true);
     setRegions([]);
     setEvidenceType(null);
+    setHoveredRegion(null);
     setViewMode('Overlay'); 
-    setMetrics(prev => ({ ...prev, trace: 'Agent Controller -> Executing Task...' }));
+    setMetrics(prev => ({ ...prev, trace: ['Agent Controller -> Processing task...'] }));
 
     try {
       const response = await fetch('http://localhost:8000/api/vqa', {
@@ -79,8 +87,7 @@ export default function Home() {
       setMetrics({
         analysis: data.task,
         confidence: `${data.confidence}%`,
-        evidence: data.evidence.stats ? 'Multimodal Report Generated' : (data.evidence.regions ? `${data.evidence.regions.length} region(s) mapped` : 'Text Analysis'),
-        trace: data.trace || `Model Executed: ${data.model_used}`
+        trace: data.trace || ['Execution trace unavailable']
       });
 
       if (data.task === "Bi-Temporal Change Detection" && imageB) setActiveTab('B');
@@ -108,11 +115,8 @@ export default function Home() {
 
   const aspect = getActiveMeta()?.width ? `${getActiveMeta().width}/${getActiveMeta().height}` : '16/9';
 
-  // Dynamic Box Rendering Logic to support multi-class Fusion overlays
-  const getBoxStyle = (label: string, evidenceType: string | null, viewMode: string) => {
+  const getBoxStyle = (label: string, evidenceType: string | null, viewMode: string, isHovered: boolean) => {
     let color = 'green';
-    
-    // Assign specific colors to specific classes
     if (evidenceType === 'change_mask') color = 'orange';
     if (evidenceType === 'fusion_mask') {
       if (label.toLowerCase().includes('water')) color = 'blue';
@@ -120,17 +124,19 @@ export default function Home() {
     }
 
     const isEvidence = viewMode === 'Evidence';
-    
     const styles: Record<string, any> = {
       'orange': { border: 'border-orange-500', bgOver: 'bg-orange-500/30', bgEv: 'bg-orange-500/60', label: 'bg-orange-600' },
       'blue': { border: 'border-blue-500', bgOver: 'bg-blue-500/30', bgEv: 'bg-blue-500/60', label: 'bg-blue-600' },
       'purple': { border: 'border-purple-500', bgOver: 'bg-purple-500/30', bgEv: 'bg-purple-500/60', label: 'bg-purple-600' },
       'green': { border: 'border-green-500', bgOver: 'bg-green-500/20', bgEv: 'bg-green-500/50', label: 'bg-green-600' }
     };
-
     const s = styles[color];
+
+    // DAY 10: Apply a bright white glowing border if this specific region is hovered in the list
+    const hoverEffects = isHovered ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.8)] z-50 scale-[1.01]' : `${s.border} z-10`;
+
     return {
-      wrapper: `absolute border-2 pointer-events-none transition-all duration-500 ${s.border} ${isEvidence ? s.bgEv : s.bgOver}`,
+      wrapper: `absolute border-2 pointer-events-none transition-all duration-300 ${hoverEffects} ${isEvidence ? s.bgEv : s.bgOver}`,
       label: `absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap ${s.label}`
     };
   };
@@ -169,7 +175,6 @@ export default function Home() {
         </aside>
 
         <main className="flex-1 bg-black border border-slate-800 rounded-xl flex flex-col relative overflow-hidden">
-          
           <div className="absolute top-3 left-3 z-10 flex gap-2 bg-slate-900/80 p-1 rounded-lg border border-slate-800 backdrop-blur-sm">
             <button onClick={() => setActiveTab('A')} className={`px-3 py-1 text-xs rounded transition-colors ${activeTab === 'A' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'}`}>Image A</button>
             <button onClick={() => setActiveTab('B')} disabled={!imageB} className={`px-3 py-1 text-xs rounded transition-colors ${activeTab === 'B' ? 'bg-blue-600 text-white font-bold' : 'text-slate-500 disabled:opacity-40'}`}>Image B</button>
@@ -187,14 +192,9 @@ export default function Home() {
           <div className="flex-1 w-full h-full flex items-center justify-center p-4 bg-zinc-950 overflow-hidden">
             {getActiveImage() ? (
               <div className="relative inline-flex min-w-[60%] min-h-[60%] max-w-full max-h-full items-center justify-center" style={{ aspectRatio: aspect, height: '10000px', maxWidth: '100%', maxHeight: '100%' }}>
-                <img 
-                  src={getActiveImage()!} 
-                  alt="Satellite View" 
-                  className={`absolute inset-0 w-full h-full object-fill transition-opacity duration-300 ${viewMode === 'Evidence' ? 'opacity-15 grayscale' : 'opacity-100'}`} 
-                />
-                
+                <img src={getActiveImage()!} alt="Satellite View" className={`absolute inset-0 w-full h-full object-fill transition-opacity duration-300 ${viewMode === 'Evidence' ? 'opacity-15 grayscale' : 'opacity-100'}`} />
                 {viewMode !== 'Original' && regions.map((region, idx) => {
-                  const style = getBoxStyle(region.label, evidenceType, viewMode);
+                  const style = getBoxStyle(region.label, evidenceType, viewMode, hoveredRegion === idx);
                   return (
                     <div 
                       key={idx}
@@ -220,7 +220,6 @@ export default function Home() {
             {chatHistory.map((msg, idx) => (
               <div key={idx} className={`p-3 rounded-lg text-sm w-11/12 ${msg.role === 'user' ? 'bg-blue-900/50 text-blue-100 self-end ml-auto border border-blue-800' : 'bg-slate-800 text-slate-300'}`}>
                 <p>{msg.text}</p>
-                
                 {msg.stats && (
                   <div className="mt-3 bg-slate-950 p-2 rounded border border-slate-700 text-xs text-slate-300">
                     <p className="font-bold text-slate-400 mb-1 tracking-wider text-[10px]">REPORT SUMMARY</p>
@@ -232,18 +231,16 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-                
-                {msg.confidence && <p className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">Confidence: {msg.confidence}%</p>}
               </div>
             ))}
-            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Processing Cross-Modal Data...</div>}
+            {analyzing && <div className="text-xs text-slate-500 animate-pulse">Agent is processing data...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-900 rounded-b-xl flex flex-col gap-2">
             <textarea 
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
               rows={3}
-              placeholder='e.g., "Identify built-up and water regions..."'
+              placeholder='e.g., "What changed?" or "Where is the water?"'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); } }}
@@ -253,11 +250,66 @@ export default function Home() {
         </aside>
       </div>
 
-      <div className="h-40 flex gap-4">
-        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">ANALYSIS</h3><div className="flex-1 flex items-center justify-center text-slate-200 text-sm font-medium text-center">{metrics.analysis}</div></div>
-        <div className="w-48 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">CONFIDENCE</h3><div className="flex-1 flex items-center justify-center text-3xl font-light text-slate-200">{metrics.confidence}</div></div>
-        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EVIDENCE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-sm text-center px-2">{metrics.evidence}</div></div>
-        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col"><h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2">EXECUTION TRACE</h3><div className="flex-1 flex items-center justify-center text-slate-400 text-[10px] text-center px-2 leading-relaxed">{metrics.trace}</div></div>
+      {/* DAY 10: UPDATED METRICS DASHBOARD */}
+      <div className="h-44 flex gap-4">
+        
+        {/* Analysis Overview */}
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+          <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">ANALYSIS</h3>
+          <div className="flex-1 flex items-center justify-center text-slate-200 text-sm font-medium text-center">{metrics.analysis}</div>
+        </div>
+        
+        {/* Confidence Score */}
+        <div className="w-48 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+          <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">CONFIDENCE</h3>
+          <div className="flex-1 flex items-center justify-center text-4xl font-light text-slate-200">{metrics.confidence}</div>
+        </div>
+        
+        {/* Interactive Evidence List */}
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col overflow-hidden">
+          <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">EVIDENCE</h3>
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {regions.length > 0 ? (
+              <ul className="text-sm space-y-1 mt-1">
+                {regions.map((reg, i) => (
+                  <li 
+                    key={i} 
+                    onMouseEnter={() => setHoveredRegion(i)}
+                    onMouseLeave={() => setHoveredRegion(null)}
+                    className="cursor-pointer hover:bg-slate-800 text-slate-300 hover:text-white px-2 py-1.5 rounded flex justify-between items-center transition-colors border border-transparent hover:border-slate-700"
+                  >
+                    <span>{reg.label}</span>
+                    <span className="text-slate-500 text-[10px] uppercase tracking-widest">Hover to View</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-500 text-sm">No regions detected</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Observable Execution Trace Checklist */}
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col overflow-hidden">
+          <h3 className="text-xs font-bold text-slate-400 tracking-wider mb-2 border-b border-slate-800 pb-1">ANALYSIS TRACE</h3>
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {Array.isArray(metrics.trace) ? (
+              <ul className="text-xs space-y-2 mt-1">
+                {metrics.trace.map((step, i) => (
+                  <li key={i} className="flex gap-2 items-start text-slate-300">
+                    <span className={step.includes('FAILED') ? "text-red-500 font-bold" : "text-green-500 font-bold"}>
+                      {step.includes('FAILED') ? '✗' : '✓'}
+                    </span>
+                    <span className="leading-tight">{step}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-500 text-xs">{metrics.trace}</div>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );
