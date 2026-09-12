@@ -4,11 +4,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Satellite, Crosshair, Upload, Map, Layers, Target, Activity, 
   CheckCircle2, AlertTriangle, ShieldCheck, Download, 
-  ChevronRight, Database, Maximize, Cpu
+  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2
 } from 'lucide-react';
 
 // =====================================================================
-// TYPES & INTERFACES (Mapped to your exact backend structure)
+// TYPES & INTERFACES
 // =====================================================================
 interface Region {
   box: [number, number, number, number]; // [ymin_pct, xmin_pct, ymax_pct, xmax_pct]
@@ -44,36 +44,32 @@ const defaultImageState: ImageState = { file: null, preview: "", metadata: {}, s
 // MAIN COMPONENT
 // =====================================================================
 export default function SatQueryApp() {
-  // --- Data Input States ---
   const [imageA, setImageA] = useState<ImageState>(defaultImageState);
   const [imageB, setImageB] = useState<ImageState>(defaultImageState);
   const [imageSAR, setImageSAR] = useState<ImageState>(defaultImageState);
 
-  // --- Viewer State ---
   const [activeTab, setActiveTab] = useState<'A' | 'B' | 'SAR'>('A');
 
-  // --- Analysis States ---
   const [query, setQuery] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // --- Refs ---
   const fileInputA = useRef<HTMLInputElement>(null);
   const fileInputB = useRef<HTMLInputElement>(null);
   const fileInputSAR = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const copilotScrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll trace to bottom when updating
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
+    if (copilotScrollRef.current) {
+      copilotScrollRef.current.scrollTop = copilotScrollRef.current.scrollHeight;
+    }
   }, [result]);
 
-  // =====================================================================
-  // API INTEGRATION (Preserved exactly as requested)
-  // =====================================================================
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'A' | 'B' | 'SAR') => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -98,12 +94,18 @@ export default function SatQueryApp() {
         metadata: data.metadata,
         status: 'loaded'
       });
-      setActiveTab(type); // Switch view to uploaded image
-      setResult(null); // Clear previous results when new data is added
+      setActiveTab(type);
+      setResult(null);
     } catch (err) {
       console.error(err);
       setFn({ file: null, preview: "", metadata: {}, status: 'error' });
     }
+  };
+
+  const handleRemove = (type: 'A' | 'B' | 'SAR') => {
+    const setFn = type === 'A' ? setImageA : type === 'B' ? setImageB : setImageSAR;
+    setFn(defaultImageState);
+    if (type === 'A') setResult(null); // Clear analysis if base image is removed to prevent stale results
   };
 
   const handleAnalyze = async () => {
@@ -159,20 +161,29 @@ export default function SatQueryApp() {
     URL.revokeObjectURL(url);
   };
 
-  // =====================================================================
-  // HELPER COMPONENTS
-  // =====================================================================
+  const handleDownloadReport = () => {
+    if (!result?.report_data) return;
+    const blob = new Blob([JSON.stringify(result.report_data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `SatQuery_Report_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const renderTraceLog = (traceString: string, idx: number) => {
-    const match = traceString.match(/^\[(.*?)\]:\s*(.*)$/);
+    const match = traceString.match(/^\[(.*?)\]\s*(.*)$/);
     if (!match) return <div key={idx} className="text-slate-400 font-mono text-xs py-1">{traceString}</div>;
     
     const tag = match[1];
     const content = match[2];
     
-    let tagColor = "text-[#38BDF8]"; // Cyan default
-    if (tag === "OBSERVATION") tagColor = "text-[#34D399]"; // Success green
-    if (tag === "COMPATIBILITY") tagColor = "text-slate-400";
-    if (content.includes("FAILED")) tagColor = "text-[#FB7185]"; // Critical red
+    let tagColor = "text-[#38BDF8]";
+    if (tag === "OBSERVATION" || tag === "VERIFICATION") tagColor = "text-[#34D399]";
+    if (tag === "COMPATIBILITY" || tag === "INPUT_VALIDATION") tagColor = "text-slate-400";
+    if (tag === "FALLBACK") tagColor = "text-[#FBBF24]";
+    if (content.includes("FAILED") || tag.includes("REJECTED")) tagColor = "text-[#FB7185]";
 
     return (
       <div key={idx} className="font-mono text-xs mb-3 border-l-2 border-[#1C2A3A] pl-3 py-0.5">
@@ -182,9 +193,6 @@ export default function SatQueryApp() {
     );
   };
 
-  // =====================================================================
-  // MAIN UI RENDER
-  // =====================================================================
   return (
     <div className="min-h-screen bg-[#070B12] text-[#F1F5F9] font-sans flex flex-col selection:bg-[#38BDF8] selection:text-[#070B12]">
       
@@ -211,10 +219,10 @@ export default function SatQueryApp() {
         </div>
       </header>
 
-      {/* MAIN GRID */}
+      {/* MAIN CONTENT AREA */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0">
         
-        {/* LEFT PANEL: DATA INPUTS (col-span-3) */}
+        {/* LEFT PANEL: DATA INPUTS */}
         <aside className="lg:col-span-3 flex flex-col gap-4">
           <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md flex flex-col h-full overflow-y-auto">
             <div className="p-3 border-b border-[#1C2A3A] flex items-center gap-2 bg-[#111A27] rounded-t-md">
@@ -223,7 +231,6 @@ export default function SatQueryApp() {
             </div>
             
             <div className="p-4 flex flex-col gap-4">
-              {/* Input Card Generator */}
               {[
                 { title: "OPTICAL / BASE", label: "Image A", state: imageA, ref: fileInputA, type: 'A' },
                 { title: "BI-TEMPORAL / CHANGE", label: "Image B", state: imageB, ref: fileInputB, type: 'B' },
@@ -244,19 +251,34 @@ export default function SatQueryApp() {
                       <div className="text-xs text-[#94A3B8] font-mono truncate bg-[#070B12] p-1.5 rounded border border-[#1C2A3A]">
                         {inp.state.metadata.filename || "satellite_scene.tif"}
                       </div>
-                      <div className="flex gap-2 text-[10px] text-[#64748B] font-mono">
+                      <div className="flex gap-2 text-[10px] text-[#64748B] font-mono flex-wrap">
+                        {inp.state.metadata.modality && (
+                          <>
+                            <span className="text-[#34D399]">{inp.state.metadata.modality.toUpperCase()}</span>
+                            <span>•</span>
+                          </>
+                        )}
                         <span>{inp.state.metadata.width}×{inp.state.metadata.height}</span>
                         <span>•</span>
                         <span>{inp.state.metadata.bands} BANDS</span>
                         <span>•</span>
                         <span>{inp.state.metadata.crs || "EPSG:4326"}</span>
                       </div>
-                      <button 
-                        onClick={() => inp.ref.current?.click()}
-                        className="mt-2 w-full text-xs py-1.5 border border-[#1C2A3A] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-[#1C2A3A] transition-colors rounded"
-                      >
-                        Replace Dataset
-                      </button>
+                      <div className="mt-2 flex gap-2">
+                        <button 
+                          onClick={() => inp.ref.current?.click()}
+                          className="flex-1 text-xs py-1.5 border border-[#1C2A3A] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-[#1C2A3A] transition-colors rounded"
+                        >
+                          Replace
+                        </button>
+                        <button 
+                          onClick={() => handleRemove(inp.type as 'A' | 'B' | 'SAR')}
+                          title="Remove dataset"
+                          className="px-3 text-xs py-1.5 border border-[#1C2A3A] text-[#FB7185]/70 hover:text-[#FB7185] hover:bg-[#FB7185]/10 hover:border-[#FB7185]/30 transition-colors rounded flex items-center justify-center"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ) : inp.state.status === 'loading' ? (
                     <div className="text-xs font-mono text-[#38BDF8] animate-pulse flex items-center gap-2">
@@ -285,10 +307,8 @@ export default function SatQueryApp() {
           </div>
         </aside>
 
-        {/* CENTER PANEL: SATELLITE VIEWER (col-span-6) */}
+        {/* CENTER PANEL: SATELLITE VIEWER */}
         <section className="lg:col-span-6 flex flex-col bg-[#0D1420] border border-[#1C2A3A] rounded-md overflow-hidden relative">
-          
-          {/* Tab Bar */}
           <div className="flex bg-[#111A27] border-b border-[#1C2A3A]">
             {[
               { id: 'A', label: 'IMAGE A', active: !!imageA.preview },
@@ -312,10 +332,7 @@ export default function SatQueryApp() {
             ))}
           </div>
 
-          {/* Viewer Area */}
           <div className="flex-1 relative bg-[#070B12] overflow-hidden flex items-center justify-center">
-            
-            {/* Empty State */}
             {(!imageA.preview && !imageB.preview && !imageSAR.preview) && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 text-center">
                 <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'radial-gradient(#38BDF8 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
@@ -329,12 +346,10 @@ export default function SatQueryApp() {
               </div>
             )}
 
-            {/* Active Image Display */}
             {((activeTab === 'A' && imageA.preview) || 
               (activeTab === 'B' && imageB.preview) || 
               (activeTab === 'SAR' && imageSAR.preview)) && (
               <div className="relative w-full h-full p-4 flex items-center justify-center group">
-                {/* Image Container with precise relative positioning for bounding boxes */}
                 <div className="relative max-w-full max-h-full inline-block border border-[#1C2A3A] shadow-2xl">
                   <img 
                     src={activeTab === 'A' ? imageA.preview : activeTab === 'B' ? imageB.preview : imageSAR.preview} 
@@ -342,7 +357,6 @@ export default function SatQueryApp() {
                     className="max-w-full max-h-full object-contain"
                   />
                   
-                  {/* Regions / Evidence Overlays */}
                   {result?.evidence?.regions?.map((reg, idx) => {
                     const [ymin, xmin, ymax, xmax] = reg.box;
                     const isWater = reg.label.toLowerCase().includes("water") || reg.label.toLowerCase().includes("flood");
@@ -369,7 +383,6 @@ export default function SatQueryApp() {
                   })}
                 </div>
                 
-                {/* Subtle View Controls */}
                 <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button className="p-2 bg-[#0D1420]/80 border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] backdrop-blur"><Maximize className="w-4 h-4" /></button>
                   <button className="p-2 bg-[#0D1420]/80 border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] backdrop-blur"><Layers className="w-4 h-4" /></button>
@@ -379,10 +392,10 @@ export default function SatQueryApp() {
           </div>
         </section>
 
-        {/* RIGHT PANEL: AI COPILOT (col-span-3) */}
+        {/* RIGHT PANEL: AI COPILOT */}
         <aside className="lg:col-span-3 flex flex-col gap-4">
           <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md flex flex-col h-full overflow-hidden">
-            <div className="p-3 border-b border-[#1C2A3A] flex items-center justify-between bg-[#111A27]">
+            <div className="p-3 border-b border-[#1C2A3A] flex items-center justify-between bg-[#111A27] shrink-0">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-[#38BDF8]" />
                 <h2 className="text-xs font-semibold tracking-widest text-[#94A3B8] uppercase">AI Copilot</h2>
@@ -390,10 +403,9 @@ export default function SatQueryApp() {
               <ShieldCheck className="w-4 h-4 text-[#34D399]" />
             </div>
 
-            <div className="p-4 flex-1 flex flex-col justify-center">
-              
+            <div className="p-4 flex-1 flex flex-col overflow-y-auto" ref={copilotScrollRef}>
               {!imageA.preview ? (
-                <div className="text-center pb-8">
+                <div className="text-center my-auto">
                   <div className="w-10 h-10 rounded-full bg-[#111A27] border border-[#1C2A3A] flex items-center justify-center mx-auto mb-4">
                     <Target className="w-4 h-4 text-[#64748B]" />
                   </div>
@@ -401,33 +413,64 @@ export default function SatQueryApp() {
                   <p className="text-xs text-[#64748B]">Load base imagery to initiate copilot.</p>
                 </div>
               ) : (
-                <div className="flex flex-col h-full justify-end">
+                <div className="flex flex-col h-full justify-between gap-4">
                   
                   {/* Suggestion Chips */}
-                  <div className="mb-4 space-y-2">
-                    <p className="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider mb-3">Suggested Tasks</p>
-                    <button onClick={() => setQuery("Describe the land-cover and major objects visible in this image.")} className="w-full text-left px-3 py-2 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] transition-colors truncate">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider mb-2">Suggested Tasks</p>
+                    <button onClick={() => setQuery("Describe the land-cover and major objects visible in this image.")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] transition-colors truncate">
                       Describe major objects
                     </button>
                     {imageB.preview && (
-                      <button onClick={() => setQuery("What changed between these two dates, and where did the change occur?")} className="w-full text-left px-3 py-2 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#38BDF8]/80 hover:text-[#38BDF8] transition-colors truncate">
+                      <button onClick={() => setQuery("What changed between these two dates, and where did the change occur?")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#38BDF8]/80 hover:text-[#38BDF8] transition-colors truncate">
                         Analyze bi-temporal change
                       </button>
                     )}
                     {imageSAR.preview && (
-                      <button onClick={() => setQuery("Use the optical and SAR images together to identify built-up and water-covered regions.")} className="w-full text-left px-3 py-2 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#34D399]/80 hover:text-[#34D399] transition-colors truncate">
+                      <button onClick={() => setQuery("Use the optical and SAR images together to identify built-up and water-covered regions.")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#34D399]/80 hover:text-[#34D399] transition-colors truncate">
                         Extract cross-modal features
                       </button>
                     )}
                   </div>
 
-                  {/* Query Input */}
-                  <div className="relative mt-4">
+                  {/* ACTIVE INTELLIGENCE OUTPUT BUBBLE */}
+                  {result && (
+                    <div className="bg-[#070B12] border border-[#38BDF8]/40 rounded-md p-3 relative overflow-hidden shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-[#38BDF8]"></div>
+                      
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-mono tracking-wider text-[#38BDF8] uppercase flex items-center gap-1.5 font-semibold">
+                          <Sparkles className="w-3 h-3 text-[#38BDF8]" />
+                          Intelligence Brief
+                        </span>
+                        <span className="text-[10px] font-mono text-[#34D399] bg-[#34D399]/10 px-1.5 py-0.5 rounded border border-[#34D399]/20 font-semibold">
+                          {result.confidence.toFixed(0)}% CONFIDENCE
+                        </span>
+                      </div>
+                      
+                      <p className="text-xs text-[#F1F5F9] leading-relaxed font-medium">
+                        {result.answer}
+                      </p>
+
+                      {result.evidence?.stats && Object.keys(result.evidence.stats).length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-[#1C2A3A] flex flex-wrap gap-1.5">
+                          {Object.entries(result.evidence.stats).map(([k, v]) => (
+                            <span key={k} className="bg-[#111A27] px-2 py-0.5 rounded border border-[#1C2A3A] text-[10px] font-mono">
+                              <span className="text-[#64748B]">{k}:</span> <span className="text-[#38BDF8] font-semibold">{String(v)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Query Input Section */}
+                  <div className="relative mt-auto">
                     <textarea 
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Ask about your imagery..."
-                      className="w-full bg-[#070B12] border border-[#1C2A3A] rounded-md p-3 pb-12 text-sm text-[#F1F5F9] placeholder:text-[#64748B] focus:outline-none focus:border-[#38BDF8] transition-colors resize-none h-32"
+                      className="w-full bg-[#070B12] border border-[#1C2A3A] rounded-md p-3 pb-12 text-sm text-[#F1F5F9] placeholder:text-[#64748B] focus:outline-none focus:border-[#38BDF8] transition-colors resize-none h-28"
                       disabled={isAnalyzing}
                     />
                     <button 
@@ -451,15 +494,14 @@ export default function SatQueryApp() {
                   </div>
                   
                   {error && (
-                    <div className="mt-3 text-xs text-[#FB7185] bg-[#FB7185]/10 p-2 rounded border border-[#FB7185]/20 flex gap-2 items-start">
+                    <div className="text-xs text-[#FB7185] bg-[#FB7185]/10 p-2 rounded border border-[#FB7185]/20 flex gap-2 items-start">
                       <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
                       {error}
                     </div>
                   )}
 
-                  {/* Execution Workflow (Visible only while analyzing) */}
                   {isAnalyzing && (
-                    <div className="mt-4 p-3 border border-[#1C2A3A] bg-[#070B12] rounded text-xs font-mono text-[#94A3B8] space-y-2">
+                    <div className="p-3 border border-[#1C2A3A] bg-[#070B12] rounded text-xs font-mono text-[#94A3B8] space-y-2">
                       <div className="flex items-center gap-2 text-[#34D399]"><CheckCircle2 className="w-3 h-3"/> Understanding request</div>
                       <div className="flex items-center gap-2 text-[#34D399]"><CheckCircle2 className="w-3 h-3"/> Validating spatial data</div>
                       <div className="flex items-center gap-2 text-[#38BDF8] animate-pulse"><span className="w-3 h-3 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin"></span> Routing to specialist models</div>
@@ -497,7 +539,7 @@ export default function SatQueryApp() {
 
         {/* 2. CONFIDENCE & STATS */}
         <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md p-4 flex flex-col">
-          <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase mb-4">System Confidence</div>
+          <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase mb-4">Evidence Confidence</div>
           
           {result ? (
             <>
@@ -507,10 +549,9 @@ export default function SatQueryApp() {
               <div className="w-full h-1 bg-[#070B12] rounded-full overflow-hidden mb-2">
                 <div className="h-full bg-[#34D399]" style={{ width: `${result.confidence}%` }}></div>
               </div>
-              <div className="text-[10px] font-mono text-[#94A3B8] mb-auto uppercase">Verified Output</div>
+              <div className="text-[10px] font-mono text-[#94A3B8] mb-auto uppercase">Score based on spatial validation</div>
               
-              {/* Secondary Stats */}
-              {Object.keys(result.evidence.stats).length > 0 && (
+              {result.evidence?.stats && Object.keys(result.evidence.stats).length > 0 && (
                 <div className="mt-4 pt-4 border-t border-[#1C2A3A] space-y-2">
                   {Object.entries(result.evidence.stats).map(([k, v]) => (
                     <div key={k} className="flex justify-between items-center text-xs">
@@ -540,7 +581,7 @@ export default function SatQueryApp() {
           <div className="flex-1 overflow-y-auto pr-2 space-y-2">
             {!result ? (
               <div className="h-full flex items-center justify-center text-xs text-[#64748B] font-mono">No verified regions...</div>
-            ) : result.evidence.regions.length > 0 ? (
+            ) : (result.evidence?.regions?.length || 0) > 0 ? (
               result.evidence.regions.map((reg, idx) => (
                 <div key={idx} className="bg-[#070B12] border border-[#1C2A3A] rounded p-2.5">
                   <div className="text-[10px] font-mono text-[#64748B] mb-1">REGION 0{idx + 1}</div>
@@ -556,14 +597,25 @@ export default function SatQueryApp() {
             )}
           </div>
 
-          {/* Export Action */}
-          {result?.gis_export && (
-            <button 
-              onClick={handleDownloadGIS}
-              className="mt-3 w-full flex items-center justify-center gap-2 bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] text-xs font-mono text-[#94A3B8] hover:text-[#F1F5F9] py-2 rounded transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" /> EXPORT GEOJSON
-            </button>
+          {result && (
+            <div className="mt-3 flex gap-2">
+              {result.gis_export && (
+                <button 
+                  onClick={handleDownloadGIS}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] text-[10px] font-mono text-[#94A3B8] hover:text-[#F1F5F9] py-2 rounded transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> GEOJSON
+                </button>
+              )}
+              {result.report_data && (
+                <button 
+                  onClick={handleDownloadReport}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] text-[10px] font-mono text-[#94A3B8] hover:text-[#F1F5F9] py-2 rounded transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> JSON REPORT
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -579,7 +631,7 @@ export default function SatQueryApp() {
                <div className="h-full flex items-center justify-center text-xs text-[#64748B] font-mono">System idle...</div>
             ) : (
                <div className="flex flex-col">
-                 {result.trace.map((step, idx) => renderTraceLog(step, idx))}
+                 {result.trace?.map((step, idx) => renderTraceLog(step, idx))}
                </div>
             )}
           </div>
