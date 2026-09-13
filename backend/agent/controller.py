@@ -269,9 +269,11 @@ class AgentController:
 
         result_payload = {
             "answer": final_answer,
+            "short_summary": f"Completed {task_label} analysis.",
             "confidence": confidence_score,
             "task": task_label,
             "model_used": ", ".join(set(models_invoked)) if models_invoked else "SatQuery_Orchestrator",
+            "tools_executed": tools_executed,
             "evidence": {
                 "type": "grounding" if accumulated_regions else "text_only",
                 "regions": accumulated_regions,

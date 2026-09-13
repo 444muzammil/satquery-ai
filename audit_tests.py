@@ -354,7 +354,8 @@ def test_T15():
         match = expected_in in detected or expected_in in str(tool_names).lower()
         if match:
             passed += 1
-        print(f"    Query: '{query[:40]}' → {detected} → {tool_names} {'✅' if match else '❌'}")
+        status_marker = "[PASS]" if match else "[FAIL]"
+        print(f"    Query: '{query[:40]}' -> {detected} -> {tool_names} {status_marker}")
 
     if passed == len(test_cases):
         record("T15", "Automatic task routing", "All queries routed correctly",

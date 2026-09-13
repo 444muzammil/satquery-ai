@@ -98,6 +98,8 @@ def validate_upload(content: bytes, filename: str) -> ValidationResult:
     )
 
 def detect_modality(metadata: dict) -> Modality:
+    if not metadata:
+        return Modality.UNKNOWN
     bands = metadata.get('bands', 0)
     dtype = metadata.get('dtype', 'uint8')
     p2 = metadata.get('p2', 0.0)

@@ -78,6 +78,10 @@ async def execute_change_detection(
             vlm_result["regions"] = cv_result["regions"]
             vlm_result["contours"] = cv_result["contours"]
             vlm_result["coverage_pct"] = cv_result.get("coverage_pct", "")
+        else:
+            # SAFETY GUARD: VLM produced text but CV found zero spatial evidence
+            original_summary = vlm_result.get("summary", "")
+            vlm_result["summary"] = f"VLM inferred changes: '{original_summary}'. HOWEVER, spatial verification found zero pixel-level evidence. This is likely an AI hallucination."
         return vlm_result
 
     # VLM unavailable — use classical CV with honest limitations
@@ -210,6 +214,15 @@ def _classical_change_detection(
         if area > max(80, int(image_area * 0.001)):
             total_change_px += area
             x, y, bw, bh = cv2.boundingRect(c)
+            
+            # Approximate polygon for precise GIS-style masking
+            epsilon = 0.005 * cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, epsilon, True)
+            poly_pct = []
+            for pt in approx:
+                px, py = pt[0]
+                poly_pct.append([round((px / wA) * 100, 2), round((py / hA) * 100, 2)])
+
             regions.append({
                 "box": [
                     round((y / hA) * 100, 1),
@@ -217,6 +230,7 @@ def _classical_change_detection(
                     round(((y + bh) / hA) * 100, 1),
                     round(((x + bw) / wA) * 100, 1),
                 ],
+                "polygon": poly_pct,
                 "label": "Bi-Temporal Change Zone",
                 "actual_pct": (area / image_area) * 100.0,
                 "area_px": area,

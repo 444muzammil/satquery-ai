@@ -103,9 +103,11 @@ async def analyze_query(request: VQARequest) -> Dict[str, Any]:
         # Return fallback error schema matching the expected frontend API contract
         return {
             "answer": f"System Error: {str(e)}",
+            "short_summary": "System error occurred during execution.",
             "confidence": 0.0,
             "task": "UNKNOWN",
             "model_used": "None",
+            "tools_executed": [],
             "evidence": {"type": "error", "regions": [], "stats": {}},
             "trace": [
                 "[SYSTEM_ERROR] Fatal error during execution.", 

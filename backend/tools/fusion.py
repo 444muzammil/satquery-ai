@@ -79,6 +79,10 @@ async def execute_optical_sar_fusion(
         if cv_result.get("regions"):
             vlm_result["regions"] = cv_result["regions"]
             vlm_result["contours"] = cv_result["contours"]
+        else:
+            # SAFETY GUARD: VLM produced text but CV found zero spatial evidence
+            original_summary = vlm_result.get("summary", "")
+            vlm_result["summary"] = f"VLM inferred cross-modal features: '{original_summary}'. HOWEVER, spatial verification found zero pixel-level evidence. This is likely an AI hallucination."
         return vlm_result
 
     return cv_result
@@ -224,6 +228,15 @@ def _classical_optical_sar_fusion(
         area = cv2.contourArea(c)
         if area > 120:
             x, y, bw, bh = cv2.boundingRect(c)
+            
+            # Approximate polygon for precise GIS-style masking
+            epsilon = 0.005 * cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, epsilon, True)
+            poly_pct = []
+            for pt in approx:
+                px, py = pt[0]
+                poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
+
             regions.append({
                 "box": [
                     round((y / h) * 100, 1),
@@ -231,6 +244,7 @@ def _classical_optical_sar_fusion(
                     round(((y + bh) / h) * 100, 1),
                     round(((x + bw) / w) * 100, 1),
                 ],
+                "polygon": poly_pct,
                 "label": "Cross-Modal: High Backscatter + Optical Edge",
                 "actual_pct": (area / image_area) * 100.0,
                 "area_px": area,
@@ -245,6 +259,15 @@ def _classical_optical_sar_fusion(
         area = cv2.contourArea(c)
         if area > max(200, int(image_area * 0.002)):
             x, y, bw, bh = cv2.boundingRect(c)
+            
+            # Approximate polygon for precise GIS-style masking
+            epsilon = 0.005 * cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, epsilon, True)
+            poly_pct = []
+            for pt in approx:
+                px, py = pt[0]
+                poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
+
             regions.append({
                 "box": [
                     round((y / h) * 100, 1),
@@ -252,6 +275,7 @@ def _classical_optical_sar_fusion(
                     round(((y + bh) / h) * 100, 1),
                     round(((x + bw) / w) * 100, 1),
                 ],
+                "polygon": poly_pct,
                 "label": "Cross-Modal: Low SAR Backscatter (Water)",
                 "actual_pct": (area / image_area) * 100.0,
                 "area_px": area,

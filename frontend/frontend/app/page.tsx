@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Satellite, Crosshair, Upload, Map, Layers, Target, Activity, 
   CheckCircle2, AlertTriangle, ShieldCheck, Download, 
-  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2
+  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff
 } from 'lucide-react';
 
 // =====================================================================
@@ -12,15 +12,18 @@ import {
 // =====================================================================
 interface Region {
   box: [number, number, number, number]; // [ymin_pct, xmin_pct, ymax_pct, xmax_pct]
+  polygon?: [number, number][]; // [x_pct, y_pct][]
   label: string;
   actual_pct: number;
 }
 
 interface AnalysisResult {
   answer: string;
+  short_summary?: string;
   confidence: number;
   task: string;
   model_used: string;
+  tools_executed?: string[];
   evidence: {
     type: string;
     regions: Region[];
@@ -49,6 +52,8 @@ export default function SatQueryApp() {
   const [imageSAR, setImageSAR] = useState<ImageState>(defaultImageState);
 
   const [activeTab, setActiveTab] = useState<'A' | 'B' | 'SAR'>('A');
+  const [rightTab, setRightTab] = useState<'CHAT' | 'DETAILS'>('CHAT');
+  const [showMarkings, setShowMarkings] = useState(true);
 
   const [query, setQuery] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -68,7 +73,7 @@ export default function SatQueryApp() {
     if (copilotScrollRef.current) {
       copilotScrollRef.current.scrollTop = copilotScrollRef.current.scrollHeight;
     }
-  }, [result]);
+  }, [result, rightTab, isAnalyzing]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'A' | 'B' | 'SAR') => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -105,7 +110,7 @@ export default function SatQueryApp() {
   const handleRemove = (type: 'A' | 'B' | 'SAR') => {
     const setFn = type === 'A' ? setImageA : type === 'B' ? setImageB : setImageSAR;
     setFn(defaultImageState);
-    if (type === 'A') setResult(null); // Clear analysis if base image is removed to prevent stale results
+    if (type === 'A') setResult(null);
   };
 
   const handleAnalyze = async () => {
@@ -121,6 +126,7 @@ export default function SatQueryApp() {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
+    setRightTab('CHAT'); 
 
     const payload = {
       image_base64: imageA.preview,
@@ -143,11 +149,29 @@ export default function SatQueryApp() {
       if (!res.ok) throw new Error("Analysis request failed");
       const data = await res.json();
       setResult(data);
+      setShowMarkings(true);
     } catch (err: any) {
       setError(err.message || "An error occurred during analysis.");
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const getSuggestions = () => {
+    if (imageSAR.preview && imageA.preview) return [
+      { text: "Identify built-up areas using both sensors", q: "Identify built-up areas using both optical and SAR sensors." },
+      { text: "Detect ships under clouds using SAR", q: "Detect ships in cloudy regions using SAR." }
+    ];
+    if (imageB.preview && imageA.preview) return [
+      { text: "What changed between these dates?", q: "What changed between these two dates, and where did the change occur?" },
+      { text: "Highlight new construction", q: "Highlight new construction." },
+      { text: "Calculate deforested area", q: "Calculate deforested area." }
+    ];
+    return [
+      { text: "Find buildings", q: "Find buildings." },
+      { text: "Assess vegetation health", q: "Assess vegetation health." },
+      { text: "Describe major objects", q: "Describe the land-cover and major objects visible in this image." }
+    ];
   };
 
   const handleDownloadGIS = () => {
@@ -174,87 +198,89 @@ export default function SatQueryApp() {
 
   const renderTraceLog = (traceString: string, idx: number) => {
     const match = traceString.match(/^\[(.*?)\]\s*(.*)$/);
-    if (!match) return <div key={idx} className="text-slate-400 font-mono text-xs py-1">{traceString}</div>;
+    if (!match) return <div key={idx} className="text-slate-500 font-mono text-xs py-1">{traceString}</div>;
     
     const tag = match[1];
     const content = match[2];
     
-    let tagColor = "text-[#38BDF8]";
-    if (tag === "OBSERVATION" || tag === "VERIFICATION") tagColor = "text-[#34D399]";
-    if (tag === "COMPATIBILITY" || tag === "INPUT_VALIDATION") tagColor = "text-slate-400";
-    if (tag === "FALLBACK") tagColor = "text-[#FBBF24]";
-    if (content.includes("FAILED") || tag.includes("REJECTED")) tagColor = "text-[#FB7185]";
+    let tagColor = "text-blue-800"; // ISRO Blue
+    if (tag === "OBSERVATION" || tag === "VERIFICATION") tagColor = "text-emerald-600";
+    if (tag === "COMPATIBILITY" || tag === "INPUT_VALIDATION") tagColor = "text-slate-500";
+    if (tag === "FALLBACK") tagColor = "text-orange-500"; // Saffron
+    if (content.includes("FAILED") || tag.includes("REJECTED")) tagColor = "text-rose-600";
 
     return (
-      <div key={idx} className="font-mono text-xs mb-3 border-l-2 border-[#1C2A3A] pl-3 py-0.5">
+      <div key={idx} className="font-mono text-xs mb-3 border-l-2 border-slate-200 pl-3 py-0.5 animate-in fade-in duration-300">
         <div className={`font-semibold tracking-wide ${tagColor}`}>{tag.replace(/_/g, ' ')}</div>
-        <div className="text-slate-300 mt-1 leading-relaxed">{content}</div>
+        <div className="text-slate-600 mt-1 leading-relaxed">{content}</div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[#070B12] text-[#F1F5F9] font-sans flex flex-col selection:bg-[#38BDF8] selection:text-[#070B12]">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col selection:bg-orange-100 selection:text-orange-900 transition-colors duration-500">
       
-      {/* HEADER */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-[#1C2A3A] bg-[#0D1420] shrink-0">
+      {/* HEADER: ISRO Heritage Theme */}
+      <header className="flex items-center justify-between px-6 py-4 bg-white shadow-[0_4px_20px_rgb(0,0,0,0.03)] z-10 shrink-0 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <Satellite className="w-5 h-5 text-[#38BDF8]" />
+          <div className="bg-blue-50 p-2 rounded-xl">
+            <Satellite className="w-6 h-6 text-blue-800" />
+          </div>
           <div>
-            <h1 className="text-sm font-bold tracking-widest text-[#F1F5F9]">SATQUERY AI</h1>
-            <p className="text-[10px] uppercase tracking-widest text-[#64748B]">Remote Sensing Intelligence</p>
+            <h1 className="text-lg font-black tracking-widest text-blue-900">SATQUERY <span className="text-orange-500">AI</span></h1>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Remote Sensing Intelligence</p>
           </div>
         </div>
         <div className="flex items-center gap-4 text-xs font-mono">
-          <div className="flex items-center gap-2 text-[#34D399]">
+          <div className="flex items-center gap-2 text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 shadow-sm">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34D399] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#34D399]"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             SYSTEM READY
           </div>
-          <span className="px-2 py-1 rounded bg-[#111A27] border border-[#1C2A3A] text-[#94A3B8]">
+          <span className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-800 font-bold border border-blue-100 shadow-sm">
             SIH26167
           </span>
         </div>
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0">
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 min-h-0 bg-slate-50/50">
         
         {/* LEFT PANEL: DATA INPUTS */}
-        <aside className="lg:col-span-3 flex flex-col gap-4">
-          <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md flex flex-col h-full overflow-y-auto">
-            <div className="p-3 border-b border-[#1C2A3A] flex items-center gap-2 bg-[#111A27] rounded-t-md">
-              <Database className="w-4 h-4 text-[#94A3B8]" />
-              <h2 className="text-xs font-semibold tracking-widest text-[#94A3B8] uppercase">Data Inputs</h2>
+        <aside className="lg:col-span-3 flex flex-col gap-4 h-full">
+          <div className="bg-white border border-slate-100 rounded-2xl flex flex-col h-full shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden transition-all duration-300">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-white z-10">
+              <Database className="w-5 h-5 text-slate-400" />
+              <h2 className="text-sm font-bold tracking-widest text-slate-800 uppercase">Data Inputs</h2>
             </div>
             
-            <div className="p-4 flex flex-col gap-4">
+            <div className="p-5 flex flex-col gap-5 overflow-y-auto">
               {[
-                { title: "OPTICAL / BASE", label: "Image A", state: imageA, ref: fileInputA, type: 'A' },
-                { title: "BI-TEMPORAL / CHANGE", label: "Image B", state: imageB, ref: fileInputB, type: 'B' },
-                { title: "RADAR / FUSION", label: "SAR Data", state: imageSAR, ref: fileInputSAR, type: 'SAR' }
+                { title: "OPTICAL / BASE", label: "Image A", state: imageA, ref: fileInputA, type: 'A', activeColor: "bg-blue-800" },
+                { title: "BI-TEMPORAL", label: "Image B", state: imageB, ref: fileInputB, type: 'B', activeColor: "bg-indigo-600" },
+                { title: "RADAR / FUSION", label: "SAR Data", state: imageSAR, ref: fileInputSAR, type: 'SAR', activeColor: "bg-orange-500" }
               ].map((inp) => (
-                <div key={inp.type} className="border border-[#1C2A3A] rounded bg-[#111A27] p-3 transition-colors hover:border-[#38BDF8]/30">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-mono tracking-widest text-[#38BDF8] flex items-center gap-1">
-                      <span className="w-1 h-1 bg-[#38BDF8] rounded-full"></span> {inp.title}
+                <div key={inp.type} className="border border-slate-100 rounded-xl bg-slate-50/50 p-4 shadow-sm hover:shadow-md hover:border-blue-200 hover:bg-white transition-all duration-300 group">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-bold tracking-widest text-slate-500 flex items-center gap-2 uppercase">
+                      <span className={`w-2 h-2 ${inp.activeColor} rounded-full shadow-sm`}></span> {inp.title}
                     </span>
-                    {inp.state.status === 'loaded' && <CheckCircle2 className="w-3.5 h-3.5 text-[#34D399]" />}
+                    {inp.state.status === 'loaded' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                   </div>
                   
-                  <div className="mb-3 text-sm text-[#F1F5F9] font-medium">{inp.label}</div>
+                  <div className="mb-4 text-sm text-slate-800 font-bold">{inp.label}</div>
                   
                   {inp.state.status === 'loaded' ? (
-                    <div className="space-y-2">
-                      <div className="text-xs text-[#94A3B8] font-mono truncate bg-[#070B12] p-1.5 rounded border border-[#1C2A3A]">
+                    <div className="space-y-3 animate-in fade-in duration-300">
+                      <div className="text-xs text-slate-600 font-mono truncate bg-white p-2.5 rounded-lg border border-slate-200 shadow-inner">
                         {inp.state.metadata.filename || "satellite_scene.tif"}
                       </div>
-                      <div className="flex gap-2 text-[10px] text-[#64748B] font-mono flex-wrap">
+                      <div className="flex gap-2 text-[10px] text-slate-500 font-mono flex-wrap">
                         {inp.state.metadata.modality && (
                           <>
-                            <span className="text-[#34D399]">{inp.state.metadata.modality.toUpperCase()}</span>
+                            <span className="text-emerald-600 font-bold">{inp.state.metadata.modality.toUpperCase()}</span>
                             <span>•</span>
                           </>
                         )}
@@ -264,33 +290,33 @@ export default function SatQueryApp() {
                         <span>•</span>
                         <span>{inp.state.metadata.crs || "EPSG:4326"}</span>
                       </div>
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-4 flex gap-2">
                         <button 
                           onClick={() => inp.ref.current?.click()}
-                          className="flex-1 text-xs py-1.5 border border-[#1C2A3A] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-[#1C2A3A] transition-colors rounded"
+                          className="flex-1 text-xs py-2 font-bold border border-slate-200 bg-white text-slate-600 hover:text-blue-800 hover:border-blue-200 transition-all rounded-lg shadow-sm hover:shadow active:scale-95"
                         >
                           Replace
                         </button>
                         <button 
                           onClick={() => handleRemove(inp.type as 'A' | 'B' | 'SAR')}
                           title="Remove dataset"
-                          className="px-3 text-xs py-1.5 border border-[#1C2A3A] text-[#FB7185]/70 hover:text-[#FB7185] hover:bg-[#FB7185]/10 hover:border-[#FB7185]/30 transition-colors rounded flex items-center justify-center"
+                          className="px-3 text-xs py-2 border border-slate-200 bg-white text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-all rounded-lg shadow-sm hover:shadow flex items-center justify-center active:scale-95"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
                   ) : inp.state.status === 'loading' ? (
-                    <div className="text-xs font-mono text-[#38BDF8] animate-pulse flex items-center gap-2">
-                      <Activity className="w-3 h-3" /> Ingesting spatial data...
+                    <div className="text-xs font-bold font-mono text-blue-800 animate-pulse flex items-center gap-2 py-4">
+                      <Activity className="w-4 h-4" /> Ingesting telemetry...
                     </div>
                   ) : (
                     <button 
                       onClick={() => inp.ref.current?.click()}
-                      className="w-full border border-dashed border-[#1C2A3A] hover:border-[#38BDF8]/50 bg-[#070B12] hover:bg-[#0D1420] text-[#94A3B8] text-xs py-4 rounded transition-all flex flex-col items-center gap-2"
+                      className="w-full border-2 border-dashed border-slate-200 hover:border-orange-400 bg-white hover:bg-orange-50 text-slate-400 hover:text-orange-600 text-xs py-6 rounded-xl transition-all duration-300 flex flex-col items-center gap-3 group-hover:-translate-y-0.5"
                     >
-                      <Upload className="w-4 h-4" />
-                      <span>Upload {inp.label}</span>
+                      <Upload className="w-5 h-5 transition-transform group-hover:scale-110" />
+                      <span className="font-bold tracking-wide">Upload {inp.label}</span>
                     </button>
                   )}
                   
@@ -308,8 +334,8 @@ export default function SatQueryApp() {
         </aside>
 
         {/* CENTER PANEL: SATELLITE VIEWER */}
-        <section className="lg:col-span-6 flex flex-col bg-[#0D1420] border border-[#1C2A3A] rounded-md overflow-hidden relative">
-          <div className="flex bg-[#111A27] border-b border-[#1C2A3A]">
+        <section className="lg:col-span-6 flex flex-col bg-white border border-slate-100 rounded-2xl overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] h-full">
+          <div className="flex bg-slate-50/80 backdrop-blur border-b border-slate-100">
             {[
               { id: 'A', label: 'IMAGE A', active: !!imageA.preview },
               { id: 'B', label: 'IMAGE B', active: !!imageB.preview },
@@ -319,12 +345,12 @@ export default function SatQueryApp() {
                 key={tab.id}
                 disabled={!tab.active}
                 onClick={() => setActiveTab(tab.id as 'A' | 'B' | 'SAR')}
-                className={`flex-1 py-2.5 text-xs font-mono tracking-widest border-r border-[#1C2A3A] last:border-r-0 transition-colors
+                className={`flex-1 py-4 text-xs font-bold font-mono tracking-widest transition-all duration-300
                   ${activeTab === tab.id 
-                    ? 'bg-[#0D1420] text-[#38BDF8] border-b-2 border-b-[#38BDF8]' 
+                    ? 'bg-white text-blue-800 border-b-2 border-b-blue-800 shadow-[0_-4px_10px_rgb(0,0,0,0.02)]' 
                     : tab.active 
-                      ? 'text-[#94A3B8] hover:bg-[#1C2A3A] hover:text-[#F1F5F9]' 
-                      : 'text-[#64748B] opacity-50 cursor-not-allowed'
+                      ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-b-2 border-b-transparent' 
+                      : 'text-slate-300 cursor-not-allowed border-b-2 border-b-transparent'
                   }`}
               >
                 {tab.label}
@@ -332,312 +358,372 @@ export default function SatQueryApp() {
             ))}
           </div>
 
-          <div className="flex-1 relative bg-[#070B12] overflow-hidden flex items-center justify-center">
+          <div className="flex-1 relative bg-slate-100/50 overflow-hidden flex items-center justify-center">
             {(!imageA.preview && !imageB.preview && !imageSAR.preview) && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 text-center">
-                <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'radial-gradient(#38BDF8 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
-                <Crosshair className="w-12 h-12 text-[#1C2A3A] mb-6" />
-                <h3 className="text-[#F1F5F9] font-medium tracking-wide mb-2">SATQUERY AI</h3>
-                <p className="text-[#94A3B8] text-sm mb-6 max-w-xs">Remote Sensing Workspace</p>
-                <div className="px-4 py-2 border border-[#1C2A3A] rounded bg-[#0D1420] text-[#64748B] text-xs font-mono">
-                  Select a dataset from Data Inputs to begin analysis
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none p-6 text-center animate-in fade-in duration-700">
+                <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(#000080 1px, transparent 1px)', backgroundSize: '32px 32px' }}></div>
+                <Crosshair className="w-16 h-16 text-slate-300 mb-6 drop-shadow-sm" />
+                <h3 className="text-slate-800 font-black tracking-widest mb-2 text-xl">SATQUERY <span className="text-orange-500">AI</span></h3>
+                <p className="text-slate-500 text-sm mb-6 max-w-xs font-medium">Interactive Geospatial Workspace</p>
+                <div className="px-5 py-2.5 border border-slate-200 rounded-full bg-white shadow-sm text-slate-500 text-xs font-mono font-bold">
+                  Ingest telemetry from Data Inputs
                 </div>
-                <p className="text-[#64748B] text-[10px] font-mono mt-4">GeoTIFF • TIFF • PNG • JPEG</p>
               </div>
             )}
 
             {((activeTab === 'A' && imageA.preview) || 
               (activeTab === 'B' && imageB.preview) || 
               (activeTab === 'SAR' && imageSAR.preview)) && (
-              <div className="relative w-full h-full p-4 flex items-center justify-center group">
-                <div className="relative max-w-full max-h-full inline-block border border-[#1C2A3A] shadow-2xl">
+              <div className="relative w-full h-full p-6 flex items-center justify-center group overflow-auto">
+                <div className="relative max-w-full max-h-full inline-block shadow-xl shadow-slate-300/50 border-4 border-white bg-white rounded-md overflow-hidden transition-all">
                   <img 
                     src={activeTab === 'A' ? imageA.preview : activeTab === 'B' ? imageB.preview : imageSAR.preview} 
                     alt="Satellite Observation" 
                     className="max-w-full max-h-full object-contain"
                   />
                   
-                  {result?.evidence?.regions?.map((reg, idx) => {
+                  {showMarkings && result?.evidence?.regions?.map((reg, idx) => {
                     const [ymin, xmin, ymax, xmax] = reg.box;
                     const isWater = reg.label.toLowerCase().includes("water") || reg.label.toLowerCase().includes("flood");
-                    const borderColor = isWater ? "border-[#38BDF8]" : "border-[#34D399]";
-                    const bgColor = isWater ? "bg-[#38BDF8]/10" : "bg-[#34D399]/10";
+                    const isChange = reg.label.toLowerCase().includes("change") || reg.label.toLowerCase().includes("new");
+                    
+                    // Thematic border colors
+                    let borderColor = "border-emerald-500";
+                    let bgColor = "bg-emerald-500/20";
+                    let tagColor = "bg-emerald-500 text-white";
+                    let strokeColor = "#10b981"; // emerald-500
+
+                    if (isWater) {
+                      borderColor = "border-blue-500";
+                      bgColor = "bg-blue-500/20";
+                      tagColor = "bg-blue-500 text-white";
+                      strokeColor = "#3b82f6"; // blue-500
+                    } else if (isChange || activeTab === 'SAR') {
+                      borderColor = "border-orange-500";
+                      bgColor = "bg-orange-500/20";
+                      tagColor = "bg-orange-500 text-white";
+                      strokeColor = "#f97316"; // orange-500
+                    }
                     
                     return (
-                      <div 
-                        key={idx}
-                        className={`absolute border-2 ${borderColor} ${bgColor} pointer-events-none transition-all duration-500`}
-                        style={{
-                          top: `${ymin}%`,
-                          left: `${xmin}%`,
-                          height: `${ymax - ymin}%`,
-                          width: `${xmax - xmin}%`
-                        }}
-                      >
-                        <div className={`absolute -top-5 left-[-2px] px-1.5 py-0.5 text-[8px] font-mono whitespace-nowrap text-[#070B12] 
-                          ${isWater ? 'bg-[#38BDF8]' : 'bg-[#34D399]'}`}>
+                      <React.Fragment key={idx}>
+                        {reg.polygon && reg.polygon.length > 2 ? (
+                          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none z-10 transition-all duration-500 ease-out">
+                            <polygon 
+                              points={reg.polygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
+                              fill={strokeColor}
+                              fillOpacity="0.2"
+                              stroke={strokeColor}
+                              strokeWidth="2"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          </svg>
+                        ) : (
+                          <div 
+                            className={`absolute border-2 ${borderColor} ${bgColor} pointer-events-none transition-all duration-500 ease-out z-10`}
+                            style={{
+                              top: `${ymin}%`,
+                              left: `${xmin}%`,
+                              height: `${ymax - ymin}%`,
+                              width: `${xmax - xmin}%`
+                            }}
+                          />
+                        )}
+                        
+                        <div 
+                          className={`absolute px-2 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap shadow-md rounded-md pointer-events-none z-20 ${tagColor}`}
+                          style={{
+                            top: `${ymin}%`,
+                            left: `${xmin}%`,
+                            transform: 'translateY(-120%)'
+                          }}
+                        >
                           {reg.label.toUpperCase()}
                         </div>
-                      </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>
                 
-                <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="p-2 bg-[#0D1420]/80 border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] backdrop-blur"><Maximize className="w-4 h-4" /></button>
-                  <button className="p-2 bg-[#0D1420]/80 border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] backdrop-blur"><Layers className="w-4 h-4" /></button>
+                <div className="absolute top-6 right-6 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  {result?.evidence?.regions && result.evidence.regions.length > 0 && (
+                    <button 
+                      onClick={() => setShowMarkings(!showMarkings)}
+                      title={showMarkings ? "Hide Regions" : "Show Regions"}
+                      className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-orange-600 hover:border-orange-300 hover:scale-105 transition-all"
+                    >
+                      {showMarkings ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <button className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-blue-800 hover:border-blue-300 hover:scale-105 transition-all"><Maximize className="w-4 h-4" /></button>
+                  <button className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-blue-800 hover:border-blue-300 hover:scale-105 transition-all"><Layers className="w-4 h-4" /></button>
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* RIGHT PANEL: AI COPILOT */}
-        <aside className="lg:col-span-3 flex flex-col gap-4">
-          <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md flex flex-col h-full overflow-hidden">
-            <div className="p-3 border-b border-[#1C2A3A] flex items-center justify-between bg-[#111A27] shrink-0">
-              <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-[#38BDF8]" />
-                <h2 className="text-xs font-semibold tracking-widest text-[#94A3B8] uppercase">AI Copilot</h2>
-              </div>
-              <ShieldCheck className="w-4 h-4 text-[#34D399]" />
+        {/* RIGHT PANEL: COPILOT & DETAILS (TABS) */}
+        <aside className="lg:col-span-3 flex flex-col gap-4 h-full">
+          <div className="bg-white border border-slate-100 rounded-2xl flex flex-col h-full shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden transition-all duration-300">
+            {/* Header Tabs */}
+            <div className="flex bg-slate-50/80 backdrop-blur border-b border-slate-100 shrink-0">
+              <button
+                onClick={() => setRightTab('CHAT')}
+                className={`flex-1 flex items-center justify-center gap-2 py-4 text-xs font-bold tracking-widest transition-all duration-300
+                  ${rightTab === 'CHAT' 
+                    ? 'bg-white text-blue-800 border-b-2 border-b-blue-800 shadow-[0_-4px_10px_rgb(0,0,0,0.02)]' 
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-b-2 border-b-transparent'
+                  }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                COPILOT
+              </button>
+              <button
+                onClick={() => setRightTab('DETAILS')}
+                className={`flex-1 flex items-center justify-center gap-2 py-4 text-xs font-bold tracking-widest transition-all duration-300
+                  ${rightTab === 'DETAILS' 
+                    ? 'bg-white text-orange-600 border-b-2 border-b-orange-600 shadow-[0_-4px_10px_rgb(0,0,0,0.02)]' 
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-b-2 border-b-transparent'
+                  }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                DETAILS
+              </button>
             </div>
 
-            <div className="p-4 flex-1 flex flex-col overflow-y-auto" ref={copilotScrollRef}>
-              {!imageA.preview ? (
-                <div className="text-center my-auto">
-                  <div className="w-10 h-10 rounded-full bg-[#111A27] border border-[#1C2A3A] flex items-center justify-center mx-auto mb-4">
-                    <Target className="w-4 h-4 text-[#64748B]" />
+            {/* TAB CONTENT: CHAT */}
+            {rightTab === 'CHAT' && (
+              <div className="p-5 flex-1 flex flex-col overflow-y-auto" ref={copilotScrollRef}>
+                {!imageA.preview ? (
+                  <div className="text-center my-auto animate-in fade-in duration-700">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto mb-4 text-blue-800 shadow-inner">
+                      <Target className="w-6 h-6" />
+                    </div>
+                    <p className="text-slate-800 font-black mb-1">Awaiting Telemetry</p>
+                    <p className="text-xs text-slate-500 font-medium">Load base imagery to initiate Copilot.</p>
                   </div>
-                  <p className="text-[#F1F5F9] text-sm mb-2">System Ready</p>
-                  <p className="text-xs text-[#64748B]">Load base imagery to initiate copilot.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col h-full justify-between gap-4">
-                  
-                  {/* Suggestion Chips */}
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider mb-2">Suggested Tasks</p>
-                    <button onClick={() => setQuery("Describe the land-cover and major objects visible in this image.")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#94A3B8] hover:text-[#F1F5F9] transition-colors truncate">
-                      Describe major objects
-                    </button>
-                    {imageB.preview && (
-                      <button onClick={() => setQuery("What changed between these two dates, and where did the change occur?")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#38BDF8]/80 hover:text-[#38BDF8] transition-colors truncate">
-                        Analyze bi-temporal change
-                      </button>
+                ) : (
+                  <div className="flex flex-col h-full justify-between gap-5">
+                    
+                    {/* Suggestions Box */}
+                    {!result && !isAnalyzing && (
+                      <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <p className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-orange-400" /> Suggested Tasks
+                        </p>
+                        {getSuggestions().map((sug, idx) => (
+                          <button 
+                            key={idx} 
+                            onClick={() => setQuery(sug.q)} 
+                            className="w-full text-left px-4 py-3 text-xs font-bold bg-white border border-slate-200 shadow-sm rounded-xl hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 text-slate-700 transition-all hover:-translate-y-0.5 truncate"
+                          >
+                            {sug.text}
+                          </button>
+                        ))}
+                      </div>
                     )}
-                    {imageSAR.preview && (
-                      <button onClick={() => setQuery("Use the optical and SAR images together to identify built-up and water-covered regions.")} className="w-full text-left px-3 py-1.5 text-xs bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] rounded text-[#34D399]/80 hover:text-[#34D399] transition-colors truncate">
-                        Extract cross-modal features
-                      </button>
-                    )}
-                  </div>
 
-                  {/* ACTIVE INTELLIGENCE OUTPUT BUBBLE */}
-                  {result && (
-                    <div className="bg-[#070B12] border border-[#38BDF8]/40 rounded-md p-3 relative overflow-hidden shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-[#38BDF8]"></div>
-                      
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-mono tracking-wider text-[#38BDF8] uppercase flex items-center gap-1.5 font-semibold">
-                          <Sparkles className="w-3 h-3 text-[#38BDF8]" />
-                          Intelligence Brief
-                        </span>
-                        <span className="text-[10px] font-mono text-[#34D399] bg-[#34D399]/10 px-1.5 py-0.5 rounded border border-[#34D399]/20 font-semibold">
-                          {result.confidence.toFixed(0)}% CONFIDENCE
-                        </span>
+                    {/* ACTIVE INTELLIGENCE OUTPUT BUBBLE */}
+                    {result && (
+                      <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-2xl p-5 relative shadow-md shadow-blue-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="text-[10px] font-black font-mono tracking-widest text-blue-800 uppercase flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                            Intelligence Brief
+                          </span>
+                          <span className="text-[10px] font-black font-mono text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full shadow-sm">
+                            {result.confidence.toFixed(0)}% CONFIDENCE
+                          </span>
+                        </div>
+                        
+                        <p className="text-sm text-slate-800 leading-relaxed font-bold mb-4">
+                          {result.answer}
+                        </p>
+
+                        {/* NEW: Result Summary Card */}
+                        <div className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Primary Task</span>
+                            <span className="text-xs font-black text-blue-900">{result.task.replace(/_/g, ' ')}</span>
+                          </div>
+                          {result.short_summary && (
+                            <div className="flex flex-col text-right">
+                              <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Summary</span>
+                              <span className="text-xs font-bold text-slate-600">{result.short_summary}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="mt-4 pt-3 border-t border-blue-100/50 flex justify-end">
+                          <button 
+                            onClick={() => setRightTab('DETAILS')}
+                            className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 transition-colors hover:translate-x-1"
+                          >
+                            View Evidence & Details <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Query Input Section */}
+                    <div className="relative mt-auto shrink-0 pt-4">
+                      <div className="relative shadow-sm rounded-2xl">
+                        <textarea 
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Command your AI assistant..."
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 pb-14 text-sm text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800 focus:bg-white transition-all resize-none h-32"
+                          disabled={isAnalyzing}
+                        />
+                        <button 
+                          onClick={handleAnalyze}
+                          disabled={isAnalyzing || !query.trim()}
+                          className={`absolute bottom-3 right-3 px-5 py-2.5 text-xs font-black tracking-wider rounded-xl transition-all flex items-center gap-2 shadow-sm
+                            ${isAnalyzing || !query.trim() 
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                              : 'bg-blue-800 text-white hover:bg-blue-900 hover:shadow-md hover:shadow-blue-900/20 active:scale-95'
+                            }`}
+                        >
+                          {isAnalyzing ? (
+                            <>
+                              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                              ANALYZING
+                            </>
+                          ) : (
+                            <>EXECUTE <ChevronRight className="w-4 h-4" /></>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {error && (
+                      <div className="text-xs text-rose-700 font-bold bg-rose-50 p-4 rounded-xl border border-rose-200 flex gap-2 items-start mt-2 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        {error}
+                      </div>
+                    )}
+
+                    {isAnalyzing && (
+                      <div className="p-5 border border-slate-100 bg-white rounded-2xl text-xs font-bold font-mono text-slate-600 space-y-3 shadow-md mt-2 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex items-center gap-3 text-emerald-600"><CheckCircle2 className="w-4 h-4"/> Parsing intent</div>
+                        <div className="flex items-center gap-3 text-emerald-600"><CheckCircle2 className="w-4 h-4"/> Validating spatial constraints</div>
+                        <div className="flex items-center gap-3 text-orange-500 animate-pulse"><span className="w-3.5 h-3.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></span> Routing to specialists</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT: DETAILS (Evidence, Trace, etc) */}
+            {rightTab === 'DETAILS' && (
+              <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50/50 p-5 gap-5 animate-in fade-in duration-500">
+                {!result ? (
+                   <div className="text-center my-auto">
+                     <Activity className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                     <p className="text-sm text-slate-500 font-bold">Run an analysis to view deep metrics.</p>
+                   </div>
+                ) : (
+                  <>
+                    {/* STATS & TOOLS */}
+                    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-[10px] font-black font-mono tracking-widest text-blue-900 uppercase mb-4 flex items-center gap-2">
+                        Execution Profile
+                      </div>
+                      <div className="space-y-4">
+                        {result.tools_executed && result.tools_executed.length > 0 && (
+                          <div>
+                            <div className="text-[10px] text-slate-400 uppercase mb-2 font-bold tracking-wider">Models Engaged:</div>
+                            <div className="flex flex-wrap gap-2">
+                              {result.tools_executed.map(t => (
+                                <span key={t} className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold font-mono border border-slate-200 rounded-lg shadow-sm">
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {result.evidence?.stats && Object.keys(result.evidence.stats).length > 0 && (
+                          <div className="pt-3 border-t border-slate-100">
+                            <div className="text-[10px] text-slate-400 uppercase mb-3 font-bold tracking-wider">Calculated Metrics:</div>
+                            <div className="space-y-2">
+                              {Object.entries(result.evidence.stats).map(([k, v]) => (
+                                <div key={k} className="flex justify-between items-center text-xs">
+                                  <span className="text-slate-600 font-bold">{k}</span>
+                                  <span className="font-mono font-black text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* SPATIAL EVIDENCE */}
+                    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col max-h-[320px]">
+                      <div className="flex justify-between items-center mb-4 shrink-0">
+                        <div className="text-[10px] font-black font-mono tracking-widest text-blue-900 uppercase">Spatial Grounding</div>
+                        {result.evidence?.regions && (
+                          <div className="text-[10px] font-black font-mono bg-orange-100 px-2.5 py-1 rounded-full text-orange-700 border border-orange-200 shadow-sm">
+                            {result.evidence.regions.length} FEATURES
+                          </div>
+                        )}
                       </div>
                       
-                      <p className="text-xs text-[#F1F5F9] leading-relaxed font-medium">
-                        {result.answer}
-                      </p>
+                      <div className="flex-1 overflow-y-auto pr-2 space-y-2.5">
+                        {(result.evidence?.regions?.length || 0) > 0 ? (
+                          result.evidence.regions.map((reg, idx) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-blue-300 hover:bg-white transition-all shadow-sm cursor-default">
+                              <div className="flex justify-between items-center mb-1.5">
+                                <div className="text-[10px] font-black font-mono text-slate-400">REGION {String(idx + 1).padStart(2, '0')}</div>
+                                <div className="text-[10px] text-emerald-600 font-black font-mono">Cov: {reg.actual_pct.toFixed(2)}%</div>
+                              </div>
+                              <div className="text-xs font-bold text-slate-800 capitalize">{reg.label}</div>
+                            </div>
+                          ))
+                        ) : (
+                           <div className="h-full flex flex-col items-center justify-center text-center text-xs text-slate-500 font-bold p-4">
+                             <Map className="w-6 h-6 mb-3 opacity-30 text-slate-400" />
+                             No explicit boundaries localized.
+                           </div>
+                        )}
+                      </div>
 
-                      {result.evidence?.stats && Object.keys(result.evidence.stats).length > 0 && (
-                        <div className="mt-2.5 pt-2 border-t border-[#1C2A3A] flex flex-wrap gap-1.5">
-                          {Object.entries(result.evidence.stats).map(([k, v]) => (
-                            <span key={k} className="bg-[#111A27] px-2 py-0.5 rounded border border-[#1C2A3A] text-[10px] font-mono">
-                              <span className="text-[#64748B]">{k}:</span> <span className="text-[#38BDF8] font-semibold">{String(v)}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <div className="mt-4 pt-4 border-t border-slate-100 flex gap-3 shrink-0">
+                        {result.gis_export && (
+                          <button onClick={handleDownloadGIS} className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-blue-800 hover:text-white border border-slate-200 hover:border-blue-800 text-[10px] font-black text-slate-700 py-2.5 rounded-xl shadow-sm transition-all active:scale-95">
+                            <Download className="w-3.5 h-3.5" /> GEOJSON
+                          </button>
+                        )}
+                        {result.report_data && (
+                          <button onClick={handleDownloadReport} className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-blue-800 hover:text-white border border-slate-200 hover:border-blue-800 text-[10px] font-black text-slate-700 py-2.5 rounded-xl shadow-sm transition-all active:scale-95">
+                            <Download className="w-3.5 h-3.5" /> REPORT
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {/* Query Input Section */}
-                  <div className="relative mt-auto">
-                    <textarea 
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Ask about your imagery..."
-                      className="w-full bg-[#070B12] border border-[#1C2A3A] rounded-md p-3 pb-12 text-sm text-[#F1F5F9] placeholder:text-[#64748B] focus:outline-none focus:border-[#38BDF8] transition-colors resize-none h-28"
-                      disabled={isAnalyzing}
-                    />
-                    <button 
-                      onClick={handleAnalyze}
-                      disabled={isAnalyzing || !query.trim()}
-                      className={`absolute bottom-3 right-3 px-4 py-1.5 text-xs font-semibold tracking-wide rounded transition-all flex items-center gap-2
-                        ${isAnalyzing || !query.trim() 
-                          ? 'bg-[#1C2A3A] text-[#64748B] cursor-not-allowed' 
-                          : 'bg-[#38BDF8] text-[#070B12] hover:bg-[#38BDF8]/90 hover:shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                        }`}
-                    >
-                      {isAnalyzing ? (
-                        <>
-                          <span className="w-3 h-3 border-2 border-[#64748B] border-t-[#070B12] rounded-full animate-spin"></span>
-                          ANALYZING
-                        </>
-                      ) : (
-                        <>ANALYZE <ChevronRight className="w-3 h-3" /></>
-                      )}
-                    </button>
-                  </div>
-                  
-                  {error && (
-                    <div className="text-xs text-[#FB7185] bg-[#FB7185]/10 p-2 rounded border border-[#FB7185]/20 flex gap-2 items-start">
-                      <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-                      {error}
+                    {/* TRACE */}
+                    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col flex-1 min-h-[280px]">
+                      <div className="text-[10px] font-black font-mono tracking-widest text-blue-900 uppercase mb-4 flex items-center gap-2 shrink-0">
+                        Execution Trace <Activity className="w-4 h-4 text-orange-500" />
+                      </div>
+                      
+                      <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-y-auto shadow-inner" ref={scrollRef}>
+                         <div className="flex flex-col">
+                           {result.trace?.map((step, idx) => renderTraceLog(step, idx))}
+                         </div>
+                      </div>
                     </div>
-                  )}
-
-                  {isAnalyzing && (
-                    <div className="p-3 border border-[#1C2A3A] bg-[#070B12] rounded text-xs font-mono text-[#94A3B8] space-y-2">
-                      <div className="flex items-center gap-2 text-[#34D399]"><CheckCircle2 className="w-3 h-3"/> Understanding request</div>
-                      <div className="flex items-center gap-2 text-[#34D399]"><CheckCircle2 className="w-3 h-3"/> Validating spatial data</div>
-                      <div className="flex items-center gap-2 text-[#38BDF8] animate-pulse"><span className="w-3 h-3 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin"></span> Routing to specialist models</div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </aside>
-
       </main>
-
-      {/* BOTTOM METRICS PANEL */}
-      <footer className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 pt-0 shrink-0 h-[280px]">
-        
-        {/* 1. ANALYSIS OVERVIEW */}
-        <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md p-4 flex flex-col relative overflow-hidden">
-          <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase mb-4">Analysis Result</div>
-          
-          {result ? (
-            <div className="flex flex-col h-full">
-              <div className="text-xs font-mono text-[#38BDF8] mb-2">{result.task.toUpperCase()}</div>
-              <p className="text-sm text-[#F1F5F9] leading-relaxed line-clamp-4">{result.answer}</p>
-              
-              <div className="mt-auto flex items-center gap-2 text-[10px] font-mono text-[#34D399] pt-4 border-t border-[#1C2A3A]">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#34D399]"></div>
-                ANALYSIS COMPLETE
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-[#64748B] font-mono">Awaiting execution...</div>
-          )}
-        </div>
-
-        {/* 2. CONFIDENCE & STATS */}
-        <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md p-4 flex flex-col">
-          <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase mb-4">Evidence Confidence</div>
-          
-          {result ? (
-            <>
-              <div className="text-4xl font-light text-[#F1F5F9] tracking-tight mb-2">
-                {result.confidence.toFixed(1)}<span className="text-lg text-[#64748B]">%</span>
-              </div>
-              <div className="w-full h-1 bg-[#070B12] rounded-full overflow-hidden mb-2">
-                <div className="h-full bg-[#34D399]" style={{ width: `${result.confidence}%` }}></div>
-              </div>
-              <div className="text-[10px] font-mono text-[#94A3B8] mb-auto uppercase">Score based on spatial validation</div>
-              
-              {result.evidence?.stats && Object.keys(result.evidence.stats).length > 0 && (
-                <div className="mt-4 pt-4 border-t border-[#1C2A3A] space-y-2">
-                  {Object.entries(result.evidence.stats).map(([k, v]) => (
-                    <div key={k} className="flex justify-between items-center text-xs">
-                      <span className="text-[#64748B]">{k}</span>
-                      <span className="font-mono text-[#F1F5F9]">{v as React.ReactNode}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-             <div className="flex-1 flex items-center justify-center text-xs text-[#64748B] font-mono">--%</div>
-          )}
-        </div>
-
-        {/* 3. SPATIAL EVIDENCE */}
-        <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md p-4 flex flex-col">
-          <div className="flex justify-between items-center mb-4">
-            <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase">Spatial Evidence</div>
-            {result?.evidence?.regions && (
-              <div className="text-[10px] font-mono bg-[#111A27] px-2 py-0.5 rounded text-[#38BDF8] border border-[#1C2A3A]">
-                {result.evidence.regions.length} FEATURES
-              </div>
-            )}
-          </div>
-          
-          <div className="flex-1 overflow-y-auto pr-2 space-y-2">
-            {!result ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#64748B] font-mono">No verified regions...</div>
-            ) : (result.evidence?.regions?.length || 0) > 0 ? (
-              result.evidence.regions.map((reg, idx) => (
-                <div key={idx} className="bg-[#070B12] border border-[#1C2A3A] rounded p-2.5">
-                  <div className="text-[10px] font-mono text-[#64748B] mb-1">REGION 0{idx + 1}</div>
-                  <div className="text-xs text-[#F1F5F9] truncate">{reg.label}</div>
-                  <div className="text-[10px] text-[#38BDF8] font-mono mt-1">Coverage: {reg.actual_pct.toFixed(2)}%</div>
-                </div>
-              ))
-            ) : (
-               <div className="h-full flex flex-col items-center justify-center text-center text-xs text-[#64748B] font-mono p-4">
-                 <Map className="w-6 h-6 mb-2 opacity-50" />
-                 No spatial boundaries matched the requested parameter.
-               </div>
-            )}
-          </div>
-
-          {result && (
-            <div className="mt-3 flex gap-2">
-              {result.gis_export && (
-                <button 
-                  onClick={handleDownloadGIS}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] text-[10px] font-mono text-[#94A3B8] hover:text-[#F1F5F9] py-2 rounded transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> GEOJSON
-                </button>
-              )}
-              {result.report_data && (
-                <button 
-                  onClick={handleDownloadReport}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#111A27] hover:bg-[#1C2A3A] border border-[#1C2A3A] text-[10px] font-mono text-[#94A3B8] hover:text-[#F1F5F9] py-2 rounded transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> JSON REPORT
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 4. ANALYSIS TRACE */}
-        <div className="bg-[#0D1420] border border-[#1C2A3A] rounded-md p-4 flex flex-col">
-          <div className="text-[10px] font-mono tracking-widest text-[#64748B] uppercase mb-4 flex justify-between">
-            <span>Execution Trace</span>
-            <Activity className="w-3 h-3" />
-          </div>
-          
-          <div className="flex-1 bg-[#070B12] border border-[#1C2A3A] rounded overflow-y-auto p-3" ref={scrollRef}>
-            {!result ? (
-               <div className="h-full flex items-center justify-center text-xs text-[#64748B] font-mono">System idle...</div>
-            ) : (
-               <div className="flex flex-col">
-                 {result.trace?.map((step, idx) => renderTraceLog(step, idx))}
-               </div>
-            )}
-          </div>
-        </div>
-
-      </footer>
     </div>
   );
 }
