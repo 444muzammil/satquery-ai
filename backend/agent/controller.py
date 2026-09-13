@@ -195,19 +195,19 @@ class AgentController:
                 elif t_name == "RS_GROUNDING":
                     res = await execute_grounding(
                         t_input, request.image_base64, req_meta_a, self.primary_provider,
-                        self.settings.GROUNDING_API_URL, self.settings.GROUNDING_API_KEY
+                        self.settings.GROUNDING_MODEL_ENDPOINT, self.settings.GROUNDING_MODEL_API_KEY
                     )
                 elif t_name == "CHANGE_DETECTION":
                     res = await execute_change_detection(
                         t_input, request.image_base64, request.image_b_base64,
                         req_meta_a, req_meta_b, self.primary_provider,
-                        self.settings.CHANGE_MODEL_URL, self.settings.CHANGE_MODEL_KEY
+                        self.settings.CHANGE_MODEL_ENDPOINT, self.settings.CHANGE_MODEL_API_KEY
                     )
                 elif t_name == "OPTICAL_SAR_FUSION":
                     res = await execute_optical_sar_fusion(
                         t_input, request.image_base64, request.sar_base64,
                         req_meta_a, req_meta_sar, self.primary_provider,
-                        self.settings.FUSION_API_URL, self.settings.FUSION_API_KEY
+                        self.settings.FUSION_MODEL_ENDPOINT, self.settings.FUSION_MODEL_API_KEY
                     )
                 elif t_name == "AREA_CALCULATOR":
                     res = calculate_area(accumulated_regions, req_meta_a)

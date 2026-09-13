@@ -12,6 +12,8 @@ from config import settings
 from providers.fallback import ClassicalFallbackProvider
 from providers.runpod import RunPodProvider
 from providers.local import LocalProvider
+from providers.openai_vision import OpenAIVisionProvider
+from providers.gemini_vision import GeminiVisionProvider
 from preprocessing.ingest import process_upload
 from agent.controller import AgentController, VQARequest
 from agent.validator import validate_upload
@@ -31,6 +33,10 @@ app.add_middleware(
 # Initialize primary RS VLM provider based on settings
 if settings.RS_VLM_PROVIDER == "runpod":
     primary_provider = RunPodProvider(settings)
+elif settings.RS_VLM_PROVIDER == "openai":
+    primary_provider = OpenAIVisionProvider(settings)
+elif settings.RS_VLM_PROVIDER == "gemini":
+    primary_provider = GeminiVisionProvider(settings)
 elif settings.RS_VLM_PROVIDER == "local":
     primary_provider = LocalProvider(
         settings.RS_VLM_MODEL, 

@@ -19,9 +19,10 @@ class Settings:
 
     # --- Agent Controller (text-only orchestration) ---
     OPENAI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
 
     # --- Primary RS VLM (EarthDial on RunPod) ---
-    RS_VLM_PROVIDER: str = "fallback"          # "runpod" | "local" | "fallback"
+    RS_VLM_PROVIDER: str = "fallback"          # "runpod" | "local" | "fallback" | "openai" | "gemini"
     RS_VLM_ENDPOINT: str = ""                  # RunPod serverless/pod URL
     RS_VLM_API_KEY: str = ""                   # RunPod API key
     RS_VLM_MODEL: str = "EarthDial_4B"         # Model/checkpoint identifier
@@ -57,6 +58,7 @@ class Settings:
         """Load settings from environment variables."""
         s = cls()
         s.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        s.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
         s.RS_VLM_PROVIDER = os.getenv("RS_VLM_PROVIDER", "fallback")
         s.RS_VLM_ENDPOINT = os.getenv("RS_VLM_ENDPOINT", "")
