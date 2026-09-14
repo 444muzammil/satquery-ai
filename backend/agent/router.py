@@ -115,7 +115,7 @@ def _run_heuristic_router(request) -> Tuple[dict, List[dict]]:
     if request.has_sar and any(w in q for w in fusion_keywords):
         return {"intent": "multimodal_analysis", "target": target, "operation": "fusion"}, [{"tool": "OPTICAL_SAR_FUSION", "input": target}]
 
-    change_keywords = ["change", "different", "increased", "decreased", "evolved", "transform", "differ", "modification", "altered", "growth", "expansion", "shrink"]
+    change_keywords = ["change", "different", "increased", "decreased", "evolved", "transform", "differ", "modification", "altered", "growth", "expansion", "shrink", "new", "construction", "before", "after", "deforest"]
     if any(w in q for w in change_keywords) and request.has_bitemporal:
         return {"intent": "change_analysis", "target": target, "operation": "compare"}, [{"tool": "CHANGE_DETECTION", "input": target}]
 

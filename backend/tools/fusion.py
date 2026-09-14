@@ -208,25 +208,42 @@ def _classical_optical_sar_fusion(
     _, high_backscatter = cv2.threshold(sar_filtered, 200, 255, cv2.THRESH_BINARY)
     _, low_backscatter = cv2.threshold(sar_filtered, 45, 255, cv2.THRESH_BINARY_INV)
 
-    # Optical analysis: edge detection
+    # Optical analysis: edge detection (for context in cloud-free areas)
     opt_gray = cv2.cvtColor(imgOpt, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(opt_gray, 80, 180)
+    edges = cv2.dilate(edges, np.ones((5, 5), np.uint8))
 
-    # Cross-modal fusion: AND of optical edges with SAR high backscatter
-    fused_built = cv2.bitwise_and(edges, high_backscatter)
+    # Cross-modal fusion: To see THROUGH clouds, we cannot rely strictly on optical edges.
+    # Instead, we heavily weight the SAR high backscatter (which penetrates clouds), 
+    # and combine it with optical edges to reinforce structures in clear areas.
+    fused_built = cv2.bitwise_or(high_backscatter, edges)
+    
+    # Clean up noise from the OR operation
+    fused_built = cv2.bitwise_and(fused_built, high_backscatter) # Must have SAR signature
+    
+    # Actually, if we want to see what's under clouds, the SAR backscatter IS the ground truth.
+    # We will use the SAR high backscatter directly, as optical edges under clouds are zero.
+    fused_built = high_backscatter
+    
+    # Massive morphological closing to group the sparse overlapping pixels into solid, 
+    # coherent polygons rather than fragmented slivers.
     fused_built = cv2.morphologyEx(
         fused_built, cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)),
     )
+    
+    # Also apply a slight dilation to thicken the resulting shapes
+    fused_built = cv2.dilate(fused_built, np.ones((5, 5), np.uint8), iterations=2)
 
     h, w = imgOpt.shape[:2]
     image_area = h * w
     contours, _ = cv2.findContours(fused_built, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     regions, valid_contours = [], []
 
-    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:8]:
+    # Increase limit to capture more areas, but group them logically
+    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:30]:
         area = cv2.contourArea(c)
-        if area > 120:
+        if area > max(120, int(image_area * 0.0005)):
             x, y, bw, bh = cv2.boundingRect(c)
             
             # Approximate polygon for precise GIS-style masking

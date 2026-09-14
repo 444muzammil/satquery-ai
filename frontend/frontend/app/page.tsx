@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Satellite, Crosshair, Upload, Map, Layers, Target, Activity, 
   CheckCircle2, AlertTriangle, ShieldCheck, Download, 
-  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff
+  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff, Scan, Loader2
 } from 'lucide-react';
 
 // =====================================================================
@@ -59,6 +59,7 @@ export default function SatQueryApp() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingPhrase, setLoadingPhrase] = useState<string>('');
   
   const fileInputA = useRef<HTMLInputElement>(null);
   const fileInputB = useRef<HTMLInputElement>(null);
@@ -127,6 +128,23 @@ export default function SatQueryApp() {
     setError(null);
     setResult(null);
     setRightTab('CHAT'); 
+    
+    const phrases = [
+      "Calibrating Multispectral Sensors...",
+      "Extracting VLM Semantic Priors...",
+      "Running Agentic GrabCut Algorithm...",
+      "Applying Morphological Closings...",
+      "Isolating Spatial Boundaries...",
+      "Generating Vector Topologies..."
+    ];
+    let step = 0;
+    setLoadingPhrase(phrases[0]);
+    const phraseInterval = setInterval(() => {
+      step++;
+      if (step < phrases.length) setLoadingPhrase(phrases[step]);
+    }, 800);
+
+    const startTime = Date.now();
 
     const payload = {
       image_base64: imageA.preview,
@@ -148,11 +166,18 @@ export default function SatQueryApp() {
       });
       if (!res.ok) throw new Error("Analysis request failed");
       const data = await res.json();
+      
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 4800) {
+        await new Promise(r => setTimeout(r, 4800 - elapsed));
+      }
+      
       setResult(data);
       setShowMarkings(true);
     } catch (err: any) {
       setError(err.message || "An error occurred during analysis.");
     } finally {
+      clearInterval(phraseInterval);
       setIsAnalyzing(false);
     }
   };
@@ -219,7 +244,27 @@ export default function SatQueryApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col selection:bg-orange-100 selection:text-orange-900 transition-colors duration-500">
-      
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes drawPolygon {
+          0% { stroke-dashoffset: 2; fill-opacity: 0; }
+          60% { stroke-dashoffset: 0; fill-opacity: 0; }
+          100% { stroke-dashoffset: 0; fill-opacity: 0.2; }
+        }
+        .animate-draw-polygon {
+          stroke-dasharray: 2;
+          stroke-dashoffset: 2;
+          fill-opacity: 0;
+          animation: drawPolygon 1.5s ease-out forwards;
+        }
+        @keyframes tagFadeIn {
+          0% { opacity: 0; transform: translateY(-80%) scale(0.9); }
+          100% { opacity: 1; transform: translateY(-120%) scale(1); }
+        }
+        .animate-tag-in {
+          opacity: 0;
+          animation: tagFadeIn 0.5s ease-out forwards;
+        }
+      `}} />
       {/* HEADER: ISRO Heritage Theme */}
       <header className="flex items-center justify-between px-6 py-4 bg-white shadow-[0_4px_20px_rgb(0,0,0,0.03)] z-10 shrink-0 border-b border-slate-100">
         <div className="flex items-center gap-3">
@@ -375,12 +420,29 @@ export default function SatQueryApp() {
               (activeTab === 'B' && imageB.preview) || 
               (activeTab === 'SAR' && imageSAR.preview)) && (
               <div className="relative w-full h-full p-6 flex items-center justify-center group overflow-auto">
-                <div className="relative max-w-full max-h-full inline-block shadow-xl shadow-slate-300/50 border-4 border-white bg-white rounded-md overflow-hidden transition-all">
+                <div className="relative max-w-full max-h-full inline-block shadow-xl shadow-slate-300/50 border-4 border-white bg-white rounded-md overflow-visible transition-all">
                   <img 
                     src={activeTab === 'A' ? imageA.preview : activeTab === 'B' ? imageB.preview : imageSAR.preview} 
                     alt="Satellite Observation" 
-                    className="max-w-full max-h-full object-contain"
+                    className={`max-w-full max-h-full object-contain transition-all duration-700 ${isAnalyzing ? 'blur-md brightness-50 scale-105' : ''}`}
                   />
+                  
+                  {isAnalyzing && (
+                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+                      <div className="relative w-24 h-24 mb-6">
+                        <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-3 border-4 border-orange-500/20 rounded-full"></div>
+                        <div className="absolute inset-3 border-4 border-orange-500 border-b-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.2s' }}></div>
+                        <Scan className="absolute inset-0 m-auto w-8 h-8 text-emerald-400 animate-pulse" />
+                      </div>
+                      <div className="px-4 py-2 bg-slate-900/80 border border-slate-700 rounded-lg shadow-2xl">
+                        <p className="text-emerald-400 font-mono text-xs tracking-widest uppercase animate-pulse">
+                          {loadingPhrase || "INITIALIZING VLM..."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   
                   {showMarkings && result?.evidence?.regions?.map((reg, idx) => {
                     const [ymin, xmin, ymax, xmax] = reg.box;
@@ -408,14 +470,16 @@ export default function SatQueryApp() {
                     return (
                       <React.Fragment key={idx}>
                         {reg.polygon && reg.polygon.length > 2 ? (
-                          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none z-10 transition-all duration-500 ease-out">
+                          <svg viewBox="0 0 100 100" preserveAspectRatio="none" overflow="visible" className="absolute inset-0 w-full h-full pointer-events-none z-10">
                             <polygon 
                               points={reg.polygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
                               fill={strokeColor}
-                              fillOpacity="0.2"
                               stroke={strokeColor}
                               strokeWidth="2"
                               vectorEffect="non-scaling-stroke"
+                              pathLength="1"
+                              className="animate-draw-polygon"
+                              style={{ animationDelay: `${idx * 0.15}s` }}
                             />
                           </svg>
                         ) : (
@@ -431,11 +495,11 @@ export default function SatQueryApp() {
                         )}
                         
                         <div 
-                          className={`absolute px-2 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap shadow-md rounded-md pointer-events-none z-20 ${tagColor}`}
+                          className={`absolute px-2 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap shadow-md rounded-md pointer-events-none z-20 animate-tag-in ${tagColor}`}
                           style={{
                             top: `${ymin}%`,
                             left: `${xmin}%`,
-                            transform: 'translateY(-120%)'
+                            animationDelay: `${idx * 0.15 + 0.5}s`
                           }}
                         >
                           {reg.label.toUpperCase()}

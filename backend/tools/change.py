@@ -198,10 +198,17 @@ def _classical_change_detection(
     )
 
     # Adaptive thresholding for better noise rejection
-    _, thresh = cv2.threshold(diff, 18, 255, cv2.THRESH_BINARY)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    # Raise threshold slightly (22) to avoid seasonal/shadow noise
+    _, thresh = cv2.threshold(diff, 22, 255, cv2.THRESH_BINARY)
+    
+    # 1. Stronger MORPH_OPEN to remove scattered seasonal/vegetation noise
+    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_small)
+    
+    # 2. Moderate MORPH_CLOSE to group adjacent changes accurately,
+    # ensuring boundaries hug the actual construction sites instead of swallowing everything.
+    kernel_med = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel_med)
 
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -209,7 +216,8 @@ def _classical_change_detection(
     regions, valid_contours = [], []
     total_change_px = 0
 
-    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
+    # Increase limit from 10 to 50 to capture all changes
+    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:50]:
         area = cv2.contourArea(c)
         if area > max(80, int(image_area * 0.001)):
             total_change_px += area
