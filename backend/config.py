@@ -56,6 +56,13 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         """Load settings from environment variables."""
+        # Explicitly load .env file to ensure variables are available
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            logger.warning("python-dotenv not installed, relying on system environment variables.")
+
         s = cls()
         s.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         s.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
