@@ -136,8 +136,10 @@ def validate_pair_compatibility(meta_a: dict, meta_b: dict) -> PairValidation:
     res_b = meta_b.get('resolution', [1.0, 1.0])
     needs_resampling = False
     
-    res_diff_x = max(res_a[0]/res_b[0], res_b[0]/res_a[0]) if res_a[0] and res_b[0] else 1.0
-    res_diff_y = max(res_a[1]/res_b[1], res_b[1]/res_a[1]) if res_a[1] and res_b[1] else 1.0
+    abs_res_a = [abs(r) for r in res_a]
+    abs_res_b = [abs(r) for r in res_b]
+    res_diff_x = max(abs_res_a[0]/abs_res_b[0], abs_res_b[0]/abs_res_a[0]) if abs_res_a[0] and abs_res_b[0] else 1.0
+    res_diff_y = max(abs_res_a[1]/abs_res_b[1], abs_res_b[1]/abs_res_a[1]) if abs_res_a[1] and abs_res_b[1] else 1.0
     
     if res_diff_x > 2.0 or res_diff_y > 2.0:
         needs_resampling = True

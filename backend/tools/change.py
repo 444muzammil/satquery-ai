@@ -83,6 +83,8 @@ async def execute_change_detection(
             # SAFETY GUARD: VLM produced text but CV found zero spatial evidence
             original_summary = vlm_result.get("summary", "")
             vlm_result["summary"] = f"VLM inferred changes: '{original_summary}'. HOWEVER, spatial verification found zero pixel-level evidence. This is likely an AI hallucination."
+            vlm_result["fallback"] = True
+            vlm_result["status"] = "warning"
         return vlm_result
 
     # VLM unavailable — use classical CV with honest limitations

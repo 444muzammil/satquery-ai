@@ -99,7 +99,7 @@ async def execute_grounding(
                     "status": "success",
                     "summary": f"Dense Semantic Mapping intercept triggered. Mapped {len(regions)} zones for widespread '{target}'.",
                     "regions": regions,
-                    "contours": [],
+                    "contours": contours,
                     "fallback": False,
                     "model": "Dense CV Segmentation",
                 }

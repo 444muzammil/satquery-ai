@@ -101,6 +101,10 @@ class Settings:
             return bool(self.RS_VLM_ENDPOINT)
         if self.RS_VLM_PROVIDER == "local":
             return self.RS_VLM_LOCAL
+        if self.RS_VLM_PROVIDER == "openai":
+            return bool(self.OPENAI_API_KEY)
+        if self.RS_VLM_PROVIDER == "gemini":
+            return bool(self.GEMINI_API_KEY)
         return False
 
     def is_specialist_available(self, specialist: str) -> bool:

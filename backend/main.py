@@ -79,7 +79,7 @@ async def upload_image(file: UploadFile = File(...)):
         result = process_upload(content, file.filename)
         
         # 3. Inject detected modality into metadata (from validator heuristic if available)
-        if hasattr(val_result, 'detected_modality') and val_result.detected_modality:
+        if hasattr(val_result, 'detected_modality') and val_result.detected_modality and val_result.detected_modality.value != "unknown":
             result["metadata"]["modality"] = val_result.detected_modality.value
             
         return result

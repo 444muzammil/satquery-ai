@@ -20,7 +20,7 @@ class OpenAIVisionProvider(RSVLMProvider):
         self.endpoint = "https://api.openai.com/v1/chat/completions"
         self.api_key = settings.OPENAI_API_KEY
         
-    async def analyze(self, images: List[ImageInput], query: str, task: TaskType) -> RSVLMResponse:
+    async def analyze(self, images: List[ImageInput], query: str, task: TaskType, config=None) -> RSVLMResponse:
         start_t = time.time()
         
         if not self.api_key:

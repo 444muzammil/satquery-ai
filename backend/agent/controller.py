@@ -85,7 +85,7 @@ class AgentController:
                     )
                     return aligned_b, f"Reprojected from {metaB['crs']} to {metaA['crs']} and resampled to Image A grid.", True
                 except Exception as e:
-                    pass
+                    logger.warning(f"Reprojection failed ({metaB.get('crs')} -> {metaA.get('crs')}): {e}. Falling back to spatial resampling.")
         
         # Spatial resampling fallback
         if imgB.shape[:2] != (hA, wA):
@@ -263,7 +263,8 @@ class AgentController:
         )
         
         auditable_trace.append(f"[VERIFICATION] Synthesized {len(accumulated_contours)} verified spatial feature(s).")
-        auditable_trace.append(f"[OUTPUT_GENERATED] Output vectors generated in EPSG:{req_meta_a.get('crs', '4326')}")
+        crs_value = str(req_meta_a.get('crs', '4326')).replace('EPSG:', '')
+        auditable_trace.append(f"[OUTPUT_GENERATED] Output vectors generated in EPSG:{crs_value}")
 
         raw_answer = " ".join(observations) if observations else "Analysis concluded with no matching telemetry."
         

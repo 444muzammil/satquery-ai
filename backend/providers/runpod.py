@@ -4,7 +4,6 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 import httpx
-import requests
 
 from providers.base import RSVLMProvider, RSVLMResponse, ImageInput, TaskType, Modality
 from config import Settings
@@ -152,6 +151,8 @@ class RunPodProvider(RSVLMProvider):
                     if "output" in data and isinstance(data["output"], dict):
                         output = data["output"]
                         text = output.get("answer") or output.get("generated_text") or ""
+                    elif "output" in data and isinstance(data["output"], str):
+                        text = data["output"]
                     else:
                         text = data.get("answer") or data.get("generated_text") or data.get("text") or ""
                         

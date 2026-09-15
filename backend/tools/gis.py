@@ -41,10 +41,20 @@ def calculate_area(
 
     # Real-world metric calculation via GeoTIFF metadata
     real_world_str = ""
-    if metadata.get("has_georeference") and metadata.get("resolution"):
-        res_x, res_y = abs(metadata["resolution"][0]), abs(metadata["resolution"][1])
+    res = metadata.get("resolution", [])
+    if metadata.get("has_georeference") and res and len(res) >= 2:
+        res_x, res_y = abs(res[0]), abs(res[1])
         total_px = sum(r.get("area_px", 0) for r in regions)
-        sq_meters = total_px * (res_x * res_y)
+        
+        # Check if CRS is geographic (degrees)
+        crs = str(metadata.get("crs", "")).upper()
+        if "4326" in crs or res_x < 0.1:
+            # Approximate conversion: 1 degree ~ 111,320 meters at equator
+            meter_per_deg = 111320.0
+            sq_meters = total_px * (res_x * meter_per_deg) * (res_y * meter_per_deg)
+        else:
+            sq_meters = total_px * (res_x * res_y)
+            
         if sq_meters >= 1_000_000:
             real_world_str = f" ({sq_meters / 1_000_000:.2f} km²)"
         else:

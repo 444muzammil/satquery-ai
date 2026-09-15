@@ -83,6 +83,8 @@ async def execute_optical_sar_fusion(
             # SAFETY GUARD: VLM produced text but CV found zero spatial evidence
             original_summary = vlm_result.get("summary", "")
             vlm_result["summary"] = f"VLM inferred cross-modal features: '{original_summary}'. HOWEVER, spatial verification found zero pixel-level evidence. This is likely an AI hallucination."
+            vlm_result["fallback"] = True
+            vlm_result["status"] = "warning"
         return vlm_result
 
     return cv_result
@@ -213,26 +215,22 @@ def _classical_optical_sar_fusion(
     edges = cv2.Canny(opt_gray, 80, 180)
     edges = cv2.dilate(edges, np.ones((5, 5), np.uint8))
 
-    # Cross-modal fusion: To see THROUGH clouds, we cannot rely strictly on optical edges.
-    # Instead, we heavily weight the SAR high backscatter (which penetrates clouds), 
-    # and combine it with optical edges to reinforce structures in clear areas.
-    fused_built = cv2.bitwise_or(high_backscatter, edges)
+    # Cross-modal fusion: Combine SAR backscatter with optical edges.
+    # SAR high backscatter detects built-up structures (even through clouds).
+    # Optical edges reinforce structure boundaries in clear areas.
+    # Fusion: require SAR evidence, but boost with optical edge co-occurrence.
+    fused_built = cv2.bitwise_and(
+        cv2.bitwise_or(high_backscatter, edges),
+        cv2.dilate(high_backscatter, np.ones((7, 7), np.uint8))
+    )
     
-    # Clean up noise from the OR operation
-    fused_built = cv2.bitwise_and(fused_built, high_backscatter) # Must have SAR signature
-    
-    # Actually, if we want to see what's under clouds, the SAR backscatter IS the ground truth.
-    # We will use the SAR high backscatter directly, as optical edges under clouds are zero.
-    fused_built = high_backscatter
-    
-    # Massive morphological closing to group the sparse overlapping pixels into solid, 
-    # coherent polygons rather than fragmented slivers.
+    # Morphological closing to group sparse overlapping pixels into coherent polygons
     fused_built = cv2.morphologyEx(
         fused_built, cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)),
     )
     
-    # Also apply a slight dilation to thicken the resulting shapes
+    # Slight dilation to thicken resulting shapes
     fused_built = cv2.dilate(fused_built, np.ones((5, 5), np.uint8), iterations=2)
 
     h, w = imgOpt.shape[:2]

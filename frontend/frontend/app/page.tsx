@@ -89,7 +89,8 @@ export default function SatQueryApp() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://localhost:8000/api/upload", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -183,7 +184,8 @@ export default function SatQueryApp() {
     };
 
     try {
-      const res = await fetch("http://localhost:8000/api/vqa", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/vqa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

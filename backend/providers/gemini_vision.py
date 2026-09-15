@@ -6,6 +6,7 @@ Temporary provider mapping RS VLM calls to Gemini 2.5 Flash for internal demos.
 import httpx
 import logging
 import time
+import asyncio
 from typing import List, Optional
 
 from .base import RSVLMProvider, RSVLMResponse, ImageInput, TaskType
@@ -20,7 +21,7 @@ class GeminiVisionProvider(RSVLMProvider):
         self.api_key = getattr(settings, "GEMINI_API_KEY", "")
         self.endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
         
-    async def analyze(self, images: List[ImageInput], query: str, task: TaskType) -> RSVLMResponse:
+    async def analyze(self, images: List[ImageInput], query: str, task: TaskType, config=None) -> RSVLMResponse:
         start_t = time.time()
         
         if not self.api_key:
@@ -43,7 +44,7 @@ class GeminiVisionProvider(RSVLMProvider):
             b64 = img.clean_base64()
             parts.append({
                 "inline_data": {
-                    "mime_type": "image/jpeg",
+                    "mime_type": "image/png" if img.data.startswith("data:image/png") else "image/jpeg",
                     "data": b64
                 }
             })
@@ -63,7 +64,7 @@ class GeminiVisionProvider(RSVLMProvider):
             "Content-Type": "application/json"
         }
         
-        import asyncio
+        
         max_retries = 3
         for attempt in range(max_retries):
             try:

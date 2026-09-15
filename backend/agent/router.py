@@ -156,7 +156,7 @@ def synthesize_final_answer(query: str, raw_observations: str, api_key: str) -> 
         "I will provide you with the user's original query and the raw data observations collected by our specialized backend tools (CV algorithms, Grounding modules, etc.). "
         "Your task is to synthesize these raw observations into a single, cohesive, highly professional, and easy-to-understand response for the user. "
         "Write in a confident, authoritative geospatial intelligence tone (e.g., 'Analysis of the telemetry indicates...', 'Spatial footprints reveal...'). "
-        "Do not invent or hallucinate new data; strictly format and professionally present the provided observations. "
+        "If the Raw Tool Observations contain an error message (like 429 Too Many Requests, API Error, or missing data), you MUST explicitly state that the system is unable to complete the analysis due to a temporary service disruption or missing telemetry, rather than hallucinating an answer. Do not invent or hallucinate new data! "
         "CRITICAL: Keep your final response strictly concise. It MUST be a single paragraph of exactly 4 to 7 lines long. Do not exceed this length.\n\n"
         f"User Query: {query}\n"
         f"Raw Tool Observations: {raw_observations}\n\n"

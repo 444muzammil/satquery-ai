@@ -51,7 +51,7 @@ async def execute_caption(
 
     return {
         "status": "success" if response.success else "error",
-        "summary": response.text,
+        "summary": response.text if response.success else f"System was unable to analyze due to API Error: {response.error}",
         "fallback": response.is_fallback,
         "model": response.model_name,
         "confidence": response.confidence,
