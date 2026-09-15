@@ -181,8 +181,17 @@ def classical_grounding(
         # Healthy green vegetation. Avoids yellowish barren land (Hue > 35).
         mask = cv2.inRange(hsv, np.array([35, 30, 20]), np.array([85, 255, 255]))
     elif any(kw in t_low for kw in ["build", "urban", "road", "railway", "structure", "development", "industrial", "buildings"]):
-        # Concrete/Urban areas. Low saturation (gray), but capped brightness to avoid bright white clouds.
-        mask = cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 45, 215]))
+        # Urban areas and structures are highly textured. Edge density is the most robust proxy.
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 60, 160)
+        # Dilate to group dense city blocks into cohesive structural zones
+        mask = cv2.dilate(edges, np.ones((9, 9), np.uint8), iterations=1)
+        
+        # Subtract vegetation and water to prevent misclassifying textured forests/waves
+        veg_mask = cv2.inRange(hsv, np.array([30, 25, 20]), np.array([90, 255, 255]))
+        water_mask = cv2.inRange(hsv, np.array([45, 15, 10]), np.array([145, 255, 230]))
+        exclusion = cv2.bitwise_or(veg_mask, water_mask)
+        mask = cv2.bitwise_and(mask, cv2.bitwise_not(exclusion))
     elif any(kw in t_low for kw in ["barren", "soil", "sand", "dirt", "desert", "runway", "airport"]):
         # Brown, tan, and orange soil.
         mask = cv2.inRange(hsv, np.array([10, 20, 50]), np.array([35, 150, 240]))
