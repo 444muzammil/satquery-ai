@@ -24,7 +24,7 @@ from evidence.confidence import estimate_confidence
 from evidence.report import generate_report
 from evidence.export import generate_gis_export
 
-from agent.router import route_query
+from agent.router import route_query, synthesize_final_answer
 
 logger = logging.getLogger("satquery.agent.controller")
 
@@ -265,7 +265,13 @@ class AgentController:
         auditable_trace.append(f"[VERIFICATION] Synthesized {len(accumulated_contours)} verified spatial feature(s).")
         auditable_trace.append(f"[OUTPUT_GENERATED] Output vectors generated in EPSG:{req_meta_a.get('crs', '4326')}")
 
-        final_answer = " ".join(observations) if observations else "Analysis concluded with no matching telemetry."
+        raw_answer = " ".join(observations) if observations else "Analysis concluded with no matching telemetry."
+        
+        api_key = getattr(self.settings, 'OPENAI_API_KEY', "")
+        if api_key and observations:
+            final_answer = synthesize_final_answer(request.query, raw_answer, api_key) or raw_answer
+        else:
+            final_answer = raw_answer
 
         result_payload = {
             "answer": final_answer,

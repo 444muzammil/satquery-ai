@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    # Uses the existing .env file in the backend folder
+    env_file:
+      - ./backend/.env
+
+  frontend:
+    build:
+      context: ./frontend/frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      # Allows the frontend container to talk to the backend if needed internally
+      - NEXT_PUBLIC_API_URL=http://localhost:8000

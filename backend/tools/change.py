@@ -62,7 +62,8 @@ async def execute_change_detection(
         if result:
             return result
 
-    # Strategy 2: Agentic VLM — analyze each image then compare
+    # Strategy 2: Agentic VLM — Single-Shot Architecture
+    # Re-enabled: Now downsamples images and passes both in a single network call.
     vlm_result = await _agentic_change_analysis(
         target, image_a_base64, image_b_base64,
         metadata_a, metadata_b, provider,
@@ -88,6 +89,26 @@ async def execute_change_detection(
     return cv_result
 
 
+def _downsample_base64(b64: str, max_dim: int = 800) -> str:
+    """Downsample base64 image to speed up VLM network upload."""
+    import base64
+    if not OPENCV_AVAILABLE:
+        return b64
+    try:
+        clean = b64.split(",")[1] if "," in b64 else b64
+        arr = np.frombuffer(base64.b64decode(clean), dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None: return b64
+        h, w = img.shape[:2]
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return base64.b64encode(buffer).decode('utf-8')
+    except Exception:
+        return b64
+
+
 async def _agentic_change_analysis(
     target: str,
     image_a_base64: str,
@@ -97,63 +118,46 @@ async def _agentic_change_analysis(
     provider: RSVLMProvider,
 ) -> Optional[Dict[str, Any]]:
     """
-    Agentic approach: analyze each image separately with VLM, then compare.
-
-    Since EarthDial is a single-image model, this orchestrates two separate
-    VLM calls and synthesizes the comparison.
+    Lightning-fast Single-Shot VLM strategy.
+    Downsamples the images to tiny payloads, then passes BOTH simultaneously to Gemini.
     """
-    # Check if provider is a real VLM (not classical fallback)
     caps = provider.get_capabilities()
     if caps.get("is_fallback"):
         return None
 
     try:
-        # Describe Image A (before)
-        img_a = ImageInput(data=image_a_base64, role="primary", metadata=metadata_a)
-        resp_a = await provider.analyze(
-            images=[img_a],
-            query=f"Describe the scene, focusing on {target} if visible. Be specific about locations and extents.",
-            task=TaskType.CAPTION,
+        small_a = _downsample_base64(image_a_base64)
+        small_b = _downsample_base64(image_b_base64)
+
+        img_a = ImageInput(data=small_a, role="primary", metadata=metadata_a)
+        img_b = ImageInput(data=small_b, role="primary", metadata=metadata_b)
+
+        query = (
+            f"You are viewing two satellite images of the exact same area at different times. "
+            f"The first image is BEFORE. The second image is AFTER. "
+            f"Analyze what changed regarding '{target}'. "
+            f"Be highly specific about the visual changes you see (e.g. 'A new road was built', 'Forest was cleared'). "
+            f"Strictly limit your response to a concise, professional paragraph of 4 to 7 lines."
         )
 
-        # Describe Image B (after)
-        img_b = ImageInput(data=image_b_base64, role="primary", metadata=metadata_b)
-        resp_b = await provider.analyze(
-            images=[img_b],
-            query=f"Describe the scene, focusing on {target} if visible. Be specific about locations and extents.",
-            task=TaskType.CAPTION,
+        resp = await provider.analyze(
+            images=[img_a, img_b],
+            query=query,
+            task=TaskType.VQA,
         )
 
-        if resp_a.success and resp_b.success:
-            # Ask VLM to compare the two descriptions
-            comparison_query = (
-                f"Compare these two observations of the same area at different times:\n\n"
-                f"BEFORE: {resp_a.text}\n\n"
-                f"AFTER: {resp_b.text}\n\n"
-                f"What changed regarding '{target}'? Describe the nature, location, "
-                f"and extent of changes. Has {target} increased, decreased, or remained unchanged?"
-            )
-
-            # Use the after image as context for the comparison
-            resp_compare = await provider.analyze(
-                images=[img_b],
-                query=comparison_query,
-                task=TaskType.VQA,
-            )
-
-            if resp_compare.success:
-                summary = resp_compare.text
-                return {
-                    "status": "success",
-                    "summary": summary,
-                    "regions": [],
-                    "contours": [],
-                    "fallback": False,
-                    "model": f"Agentic Change Analysis via {provider.name}",
-                }
+        if resp.success:
+            return {
+                "status": "success",
+                "summary": resp.text,
+                "regions": [],
+                "contours": [],
+                "fallback": False,
+                "model": f"Single-Shot VLM via {provider.name}",
+            }
 
     except Exception as exc:
-        logger.warning(f"Agentic change analysis failed: {exc}")
+        logger.warning(f"Single-Shot VLM change analysis failed: {exc}")
 
     return None
 

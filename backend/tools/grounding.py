@@ -91,8 +91,9 @@ async def execute_grounding(
     if is_dense and OPENCV_AVAILABLE:
         img = _decode_base64_to_cv2(image_base64)
         if img is not None:
-            # We request up to 150 regions and lower the area threshold for tiny buildings
-            regions, contours = classical_grounding(img, target, max_regions=150, min_area_pct=0.0002)
+            # We request up to 50 regions and lower the area threshold for tiny buildings
+            # (Limiting to 50 prevents SVG rendering glitches in the frontend where borders appear/disappear)
+            regions, contours = classical_grounding(img, target, max_regions=50, min_area_pct=0.0002)
             if len(regions) > 5:
                 return {
                     "status": "success",
@@ -174,15 +175,17 @@ def classical_grounding(
     t_low = target.lower()
 
     if any(kw in t_low for kw in ["water", "river", "lake", "canal", "flood", "ocean", "pond"]):
-        m1 = cv2.inRange(hsv, np.array([85, 30, 30]), np.array([140, 255, 255]))
-        m2 = cv2.inRange(hsv, np.array([5, 10, 40]), np.array([30, 220, 245]))
-        mask = cv2.bitwise_or(m1, m2)
+        # Broad water mask: covers cyan, blue, and grayish-green (turbid/hazy) water. 
+        mask = cv2.inRange(hsv, np.array([45, 5, 10]), np.array([150, 255, 255]))
     elif any(kw in t_low for kw in ["vegetation", "forest", "crop", "tree", "agricultural", "farm", "green"]):
-        mask = cv2.inRange(hsv, np.array([25, 20, 20]), np.array([95, 255, 255]))
+        # Strictly healthy/green vegetation
+        mask = cv2.inRange(hsv, np.array([30, 25, 20]), np.array([90, 255, 255]))
     elif any(kw in t_low for kw in ["build", "urban", "road", "railway", "structure", "development", "industrial", "buildings"]):
+        # Concrete/Asphalt/Roofs (Low saturation, high value)
         mask = cv2.inRange(hsv, np.array([0, 0, 85]), np.array([180, 50, 255]))
-    elif any(kw in t_low for kw in ["barren", "soil", "sand", "dirt", "desert"]):
-        mask = cv2.inRange(hsv, np.array([10, 15, 90]), np.array([35, 130, 255]))
+    elif any(kw in t_low for kw in ["barren", "soil", "sand", "dirt", "desert", "runway", "airport"]):
+        # Soil, dirt, and barren land (Browns and oranges)
+        mask = cv2.inRange(hsv, np.array([10, 15, 60]), np.array([35, 150, 255]))
     else:
         edges = cv2.Canny(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 70, 170)
         mask = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
@@ -191,9 +194,8 @@ def classical_grounding(
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     
     # 2. Merge nearby structures/pixels into larger "zones" or "blocks"
-    # This prevents the UI from cluttering with 80+ tiny polygons and instead draws
-    # large, accurate multi-sided polygons around entire neighborhoods or forests.
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))
+    # Using 13x13 prevents polygons from aggressively cutting across natural curves (like rivers)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((13, 13), np.uint8))
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -203,7 +205,8 @@ def classical_grounding(
         if area > max(40, int(image_area * min_area_pct)):
             x, y, bw, bh = cv2.boundingRect(c)
             
-            epsilon = 0.005 * cv2.arcLength(c, True)
+            # Tighter epsilon (0.003) hugs natural curves like rivers perfectly without creating huge jagged polygons
+            epsilon = 0.003 * cv2.arcLength(c, True)
             approx = cv2.approxPolyDP(c, epsilon, True)
             poly_pct = []
             for pt in approx:

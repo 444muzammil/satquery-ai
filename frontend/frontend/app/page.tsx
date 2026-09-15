@@ -246,13 +246,12 @@ export default function SatQueryApp() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col selection:bg-orange-100 selection:text-orange-900 transition-colors duration-500">
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes drawPolygon {
-          0% { stroke-dashoffset: 2; fill-opacity: 0; }
-          60% { stroke-dashoffset: 0; fill-opacity: 0; }
-          100% { stroke-dashoffset: 0; fill-opacity: 0.2; }
+          0% { opacity: 0; fill-opacity: 0; }
+          50% { opacity: 1; fill-opacity: 0; }
+          100% { opacity: 1; fill-opacity: 0.2; }
         }
         .animate-draw-polygon {
-          stroke-dasharray: 2;
-          stroke-dashoffset: 2;
+          opacity: 0;
           fill-opacity: 0;
           animation: drawPolygon 1.5s ease-out forwards;
         }
@@ -477,7 +476,6 @@ export default function SatQueryApp() {
                               stroke={strokeColor}
                               strokeWidth="2"
                               vectorEffect="non-scaling-stroke"
-                              pathLength="1"
                               className="animate-draw-polygon"
                               style={{ animationDelay: `${idx * 0.15}s` }}
                             />

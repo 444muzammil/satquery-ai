@@ -143,3 +143,18 @@ def route_query(request, settings: Settings) -> Tuple[str, dict, list]:
         
     intent_info, tools_list = _run_heuristic_router(request)
     return "Heuristic Task", intent_info, tools_list
+
+def synthesize_final_answer(query: str, raw_observations: str, api_key: str) -> Optional[str]:
+    """Uses the LLM orchestrator to synthesize a professional final response from raw tool outputs."""
+    prompt = (
+        "You are SatQuery AI, an expert Remote Sensing Intelligence Assistant. "
+        "I will provide you with the user's original query and the raw data observations collected by our specialized backend tools (CV algorithms, Grounding modules, etc.). "
+        "Your task is to synthesize these raw observations into a single, cohesive, highly professional, and easy-to-understand response for the user. "
+        "Write in a confident, authoritative geospatial intelligence tone (e.g., 'Analysis of the telemetry indicates...', 'Spatial footprints reveal...'). "
+        "Do not invent or hallucinate new data; strictly format and professionally present the provided observations. "
+        "CRITICAL: Keep your final response strictly concise. It MUST be a single paragraph of exactly 4 to 7 lines long. Do not exceed this length.\n\n"
+        f"User Query: {query}\n"
+        f"Raw Tool Observations: {raw_observations}\n\n"
+        "Provide the final synthesized response:"
+    )
+    return call_llm_orchestrator(prompt, json_mode=False, api_key=api_key)
