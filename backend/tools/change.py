@@ -62,12 +62,13 @@ async def execute_change_detection(
         if result:
             return result
 
-    # Strategy 2: Agentic VLM — Single-Shot Architecture
-    # Re-enabled: Now downsamples images and passes both in a single network call.
-    vlm_result = await _agentic_change_analysis(
-        target, image_a_base64, image_b_base64,
-        metadata_a, metadata_b, provider,
-    )
+    # Strategy 2: Agentic VLM ?" Single-Shot Architecture
+    # TEMPORARILY DISABLED per user request (too many hallucination/missing telemetry issues)
+    vlm_result = None
+    # vlm_result = await _agentic_change_analysis(
+    #     target, image_a_base64, image_b_base64,
+    #     metadata_a, metadata_b, provider,
+    # )
 
     # Strategy 3: Classical CV pixel differencing (always run for spatial evidence)
     cv_result = _classical_change_detection(image_a_base64, image_b_base64, target)
