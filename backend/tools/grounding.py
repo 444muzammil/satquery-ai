@@ -174,18 +174,18 @@ def classical_grounding(
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     t_low = target.lower()
 
-    if any(kw in t_low for kw in ["water", "river", "lake", "canal", "flood", "ocean", "pond"]):
-        # Broad water mask: covers cyan, blue, and grayish-green (turbid/hazy) water. 
-        mask = cv2.inRange(hsv, np.array([45, 5, 10]), np.array([150, 255, 255]))
+    if any(kw in t_low for kw in ["water", "river", "lake", "canal", "flood", "ocean", "pond", "coast"]):
+        # Turbid and clear water. Avoids pure gray clouds/concrete (Sat > 15) and avoids bright clouds (Val < 230)
+        mask = cv2.inRange(hsv, np.array([45, 15, 10]), np.array([145, 255, 230]))
     elif any(kw in t_low for kw in ["vegetation", "forest", "crop", "tree", "agricultural", "farm", "green"]):
-        # Strictly healthy/green vegetation
-        mask = cv2.inRange(hsv, np.array([30, 25, 20]), np.array([90, 255, 255]))
+        # Healthy green vegetation. Avoids yellowish barren land (Hue > 35).
+        mask = cv2.inRange(hsv, np.array([35, 30, 20]), np.array([85, 255, 255]))
     elif any(kw in t_low for kw in ["build", "urban", "road", "railway", "structure", "development", "industrial", "buildings"]):
-        # Concrete/Asphalt/Roofs (Low saturation, high value)
-        mask = cv2.inRange(hsv, np.array([0, 0, 85]), np.array([180, 50, 255]))
+        # Concrete/Urban areas. Low saturation (gray), but capped brightness to avoid bright white clouds.
+        mask = cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 45, 215]))
     elif any(kw in t_low for kw in ["barren", "soil", "sand", "dirt", "desert", "runway", "airport"]):
-        # Soil, dirt, and barren land (Browns and oranges)
-        mask = cv2.inRange(hsv, np.array([10, 15, 60]), np.array([35, 150, 255]))
+        # Brown, tan, and orange soil.
+        mask = cv2.inRange(hsv, np.array([10, 20, 50]), np.array([35, 150, 240]))
     else:
         edges = cv2.Canny(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 70, 170)
         mask = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
