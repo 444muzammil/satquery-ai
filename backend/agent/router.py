@@ -64,17 +64,17 @@ RULES:
 7. CRITICAL: For any requests to "describe", "summarize", or provide an "overview" of a single optical image, you MUST strictly use RS_CAPTION to invoke the Gemini VLM.
 
 Output strictly valid JSON:
-{
-  "intent_analysis": {
+{{
+  "intent_analysis": {{
     "intent": "vqa | caption | grounding | measurement | change_analysis | multimodal_analysis | comparative_spatial_analysis",
     "target": "extracted natural-language target string or 'scene'",
     "operation": "describe | locate | quantify | compare | rank_density"
-  },
+  }},
   "task_label": "Official Task Name",
   "tools": [
-    {"tool": "TOOL_NAME", "input": "target parameter"}
+    {{"tool": "TOOL_NAME", "input": "target parameter"}}
   ]
-}"""
+}}"""
     resp = call_llm_orchestrator(intent_prompt, json_mode=True, api_key=api_key)
     if not resp:
         return None
