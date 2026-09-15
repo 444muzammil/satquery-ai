@@ -95,9 +95,10 @@ async def execute_grounding(
             # (Limiting to 50 prevents SVG rendering glitches in the frontend where borders appear/disappear)
             regions, contours = classical_grounding(img, target, max_regions=50, min_area_pct=0.0002)
             if len(regions) > 5:
+                total_area_pct = sum(r.get("actual_pct", 0) for r in regions)
                 return {
                     "status": "success",
-                    "summary": f"Dense Semantic Mapping intercept triggered. Mapped {len(regions)} zones for widespread '{target}'.",
+                    "summary": f"Dense Semantic Mapping intercept triggered. Mapped {len(regions)} zones for widespread '{target}', accounting for {total_area_pct:.2f}% of total telemetry footprint.",
                     "regions": regions,
                     "contours": contours,
                     "fallback": False,
@@ -140,9 +141,10 @@ async def execute_grounding(
         img = _decode_base64_to_cv2(image_base64)
         if img is not None:
             regions, contours = classical_grounding(img, target)
+            total_area_pct = sum(r.get("actual_pct", 0) for r in regions)
             summary = (
-                f"Classical spatial heuristic localized {len(regions)} "
-                f"regions for '{target}'."
+                f"Classical spatial heuristic mapped {len(regions)} regions for '{target}', "
+                f"collectively encompassing {total_area_pct:.2f}% of the visible telemetry extent."
             )
             return {
                 "status": "success",

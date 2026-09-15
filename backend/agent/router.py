@@ -61,19 +61,20 @@ RULES:
 4. If the user mentions "SAR", "radar", "backscatter", or asks to combine/fuse imagery, you MUST use OPTICAL_SAR_FUSION.
 5. If the user mentions "change", "before", "after", or "difference", use CHANGE_DETECTION.
 6. CRITICAL: If SAR Sensor Telemetry is True, you MUST substitute RS_GROUNDING with OPTICAL_SAR_FUSION for ALL grounding, area, and comparative sequences.
+7. CRITICAL: For any requests to "describe", "summarize", or provide an "overview" of a single optical image, you MUST strictly use RS_CAPTION to invoke the Gemini VLM.
 
 Output strictly valid JSON:
-{{
-  "intent_analysis": {{
+{
+  "intent_analysis": {
     "intent": "vqa | caption | grounding | measurement | change_analysis | multimodal_analysis | comparative_spatial_analysis",
     "target": "extracted natural-language target string or 'scene'",
     "operation": "describe | locate | quantify | compare | rank_density"
-  }},
+  },
   "task_label": "Official Task Name",
   "tools": [
-    {{"tool": "TOOL_NAME", "input": "target parameter"}}
+    {"tool": "TOOL_NAME", "input": "target parameter"}
   ]
-}}"""
+}"""
     resp = call_llm_orchestrator(intent_prompt, json_mode=True, api_key=api_key)
     if not resp:
         return None
@@ -130,11 +131,11 @@ def _run_heuristic_router(request) -> Tuple[dict, List[dict]]:
             {"tool": "AREA_CALCULATOR", "input": "REGIONS"}
         ]
 
-    if any(w in q for w in ["highlight", "mark", "locate", "find", "where are", "spot"]):
-        return {"intent": "grounding", "target": target, "operation": "locate"}, [{"tool": first_tool, "input": target}]
-
     if any(w in q for w in ["describe", "caption", "overview", "summarize"]):
         return {"intent": "caption", "target": "scene", "operation": "describe"}, [{"tool": "RS_CAPTION", "input": request.query}]
+
+    if any(w in q for w in ["highlight", "mark", "locate", "find", "where are", "spot"]):
+        return {"intent": "grounding", "target": target, "operation": "locate"}, [{"tool": first_tool, "input": target}]
 
     return {"intent": "vqa", "target": target, "operation": "answer"}, [{"tool": "RS_VQA", "input": request.query}]
 
@@ -153,9 +154,10 @@ def synthesize_final_answer(query: str, raw_observations: str, api_key: str) -> 
     """Uses the LLM orchestrator to synthesize a professional final response from raw tool outputs."""
     prompt = (
         "You are SatQuery AI, an expert Remote Sensing Intelligence Assistant. "
-        "I will provide you with the user's original query and the raw data observations collected by our specialized backend tools (CV algorithms, Grounding modules, etc.). "
+        "I will provide you with the user's original query and the raw data observations collected by our specialized backend tools. "
         "Your task is to synthesize these raw observations into a single, cohesive, highly professional, and easy-to-understand response for the user. "
-        "Write in a confident, authoritative geospatial intelligence tone (e.g., 'Analysis of the telemetry indicates...', 'Spatial footprints reveal...'). "
+        "Write in a highly analytical, data-driven 'SatQuery AI vibe'. Your response MUST heavily feature numbers, statistics, percentages, and explicit reasoning derived directly from the raw observations. "
+        "Avoid generic filler words. Instead, specify exactly how many zones were detected, the scale of the footprint, and the analytical conclusion. "
         "If the Raw Tool Observations contain an error message (like 429 Too Many Requests, API Error, or missing data), you MUST explicitly state that the system is unable to complete the analysis due to a temporary service disruption or missing telemetry, rather than hallucinating an answer. Do not invent or hallucinate new data! "
         "CRITICAL: Keep your final response strictly concise. It MUST be a single paragraph of exactly 4 to 7 lines long. Do not exceed this length.\n\n"
         f"User Query: {query}\n"
