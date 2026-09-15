@@ -337,6 +337,11 @@ async def test_T12():
 # ============================================================
 def test_T15():
     print("\n=== T15: Automatic Task Routing ===")
+    
+    # Force heuristic router for predictable test behavior
+    old_key = getattr(settings, 'OPENAI_API_KEY', '')
+    settings.OPENAI_API_KEY = ''
+    
     test_cases = [
         ("What is visible in this image?", False, False, "vqa"),
         ("Describe the scene", False, False, "caption"),
@@ -366,6 +371,8 @@ def test_T15():
     else:
         record("T15", "Automatic task routing", "Correct routing",
                f"{passed}/{len(test_cases)} correct", "FAIL")
+               
+    settings.OPENAI_API_KEY = old_key
 
 # ============================================================
 # T16 — INVALID MODALITY HANDLING

@@ -2,9 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Satellite, Crosshair, Upload, Map, Layers, Target, Activity, 
-  CheckCircle2, AlertTriangle, ShieldCheck, Download, 
-  ChevronRight, Database, Maximize, Minimize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff, Scan, Loader2, CornerDownRight
+  Satellite, Crosshair, Upload, Database, Maximize, Minimize, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff, Scan, CornerDownRight, Activity, CheckCircle2, AlertTriangle, ChevronRight, Target, Map, Download
 } from 'lucide-react';
 
 // =====================================================================
@@ -27,16 +25,17 @@ interface AnalysisResult {
   evidence: {
     type: string;
     regions: Region[];
-    stats: Record<string, any>;
+    stats: Record<string, string | number | boolean>;
   };
   trace: string[];
-  report_data?: any;
-  gis_export?: any;
+  report_data?: Record<string, unknown>;
+  gis_export?: Record<string, unknown>;
 }
 
 interface ImageState {
   file: File | null;
   preview: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: any;
   status: 'awaiting' | 'loading' | 'loaded' | 'error';
 }
@@ -200,8 +199,8 @@ export default function SatQueryApp() {
       
       setResult(data);
       setShowMarkings(true);
-    } catch (err: any) {
-      setError(err.message || "An error occurred during analysis.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An error occurred during analysis.");
     } finally {
       clearInterval(phraseInterval);
       setIsAnalyzing(false);
@@ -468,6 +467,7 @@ export default function SatQueryApp() {
               (activeTab === 'SAR' && imageSAR.preview)) && (
               <div className={`relative w-full h-full flex items-center justify-center group overflow-auto transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-900/95 p-12 backdrop-blur-sm' : 'p-6'}`}>
                 <div className={`relative inline-block border-4 border-white bg-white rounded-md transition-all ${isFullscreen ? 'max-w-[95vw] max-h-[95vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]' : 'max-w-full max-h-full shadow-xl shadow-slate-300/50'}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img 
                     src={activeTab === 'A' ? imageA.preview : activeTab === 'B' ? imageB.preview : imageSAR.preview} 
                     alt="Satellite Observation" 

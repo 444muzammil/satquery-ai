@@ -65,14 +65,14 @@ class GeminiVisionProvider(RSVLMProvider):
         }
         
         
-        max_retries = 3
+        max_retries = 2
         for attempt in range(max_retries):
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     resp = await client.post(self.endpoint, json=payload, headers=headers)
                     if resp.status_code == 429:
                         if attempt < max_retries - 1:
-                            await asyncio.sleep(2.0 ** attempt)
+                            await asyncio.sleep(2.0 * (attempt + 1))
                             continue
                     resp.raise_for_status()
                     data = resp.json()
@@ -91,7 +91,7 @@ class GeminiVisionProvider(RSVLMProvider):
             except Exception as e:
                 # If it's a 429 from raise_for_status
                 if attempt < max_retries - 1 and getattr(e, 'response', None) and getattr(e.response, 'status_code', None) == 429:
-                    await asyncio.sleep(2.0 ** attempt)
+                    await asyncio.sleep(2.0 * (attempt + 1))
                     continue
                 
                 logger.error(f"Gemini Vision API Error: {e}", exc_info=True)

@@ -1,0 +1,162 @@
+[
+  {
+    "id": "T01",
+    "name": "Repository startup & config load",
+    "expected": "Settings loaded",
+    "actual": "Settings loaded",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T02",
+    "name": "FastAPI app initialization",
+    "expected": "App with routes",
+    "actual": "Routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/api/upload', '/api/vqa']",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T15",
+    "name": "Automatic task routing",
+    "expected": "All correct",
+    "actual": "4/5 correct",
+    "status": "PARTIAL",
+    "evidence": ""
+  },
+  {
+    "id": "T16",
+    "name": "Invalid modality handling",
+    "expected": "Graceful handling",
+    "actual": "Result: Modality.UNKNOWN",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T03",
+    "name": "Gemini VLM connectivity",
+    "expected": "200 OK",
+    "actual": "Error: ",
+    "status": "FAIL",
+    "evidence": ""
+  },
+  {
+    "id": "T04",
+    "name": "Gemini image inference",
+    "expected": "Image analysis",
+    "actual": "Error: ",
+    "status": "FAIL",
+    "evidence": ""
+  },
+  {
+    "id": "T05",
+    "name": "Single-image optical VQA pipeline",
+    "expected": "answer+trace+evidence+confidence",
+    "actual": "Answer: The analysis, utilizing the Classical Spectral Heuristic Fallback due to tempora",
+    "status": "PASS",
+    "evidence": "Confidence: 38.0"
+  },
+  {
+    "id": "T06",
+    "name": "Single-image SAR VQA",
+    "expected": "Answer returned",
+    "actual": "Answer: Analysis concluded with no matching telemetry.",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T07",
+    "name": "Captioning/scene description",
+    "expected": "Descriptive scene answer",
+    "actual": "The analysis indicates that the scene is dominated by natural elements, with veg",
+    "status": "PASS",
+    "evidence": "Routed to captioning tool"
+  },
+  {
+    "id": "T09",
+    "name": "Bi-temporal change analysis",
+    "expected": "Change description + routing",
+    "actual": "The bi-temporal spatial differencing analysis identified significant surface mod",
+    "status": "PASS",
+    "evidence": "Task: Change Detection Task"
+  },
+  {
+    "id": "T10",
+    "name": "Change-based VQA",
+    "expected": "Directional change answer",
+    "actual": "The analysis of bi-temporal spatial differencing indicates a significant change ",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T12",
+    "name": "Optical+SAR cross-modal",
+    "expected": "Fusion routing + output",
+    "actual": "Analysis concluded with no matching telemetry.",
+    "status": "PASS",
+    "evidence": "Task: Identify Built-up and Water-covered Regions"
+  },
+  {
+    "id": "T13",
+    "name": "Optical-only ablation",
+    "expected": "Response generated",
+    "actual": "Opt: The analysis identified a single region classified as 'built",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T14",
+    "name": "SAR-only ablation",
+    "expected": "Response generated",
+    "actual": "SAR: Analysis concluded with no matching telemetry.",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T20",
+    "name": "Malformed query (empty)",
+    "expected": "Graceful handling",
+    "actual": "Result: {'answer': 'The analysis indicates a scene dominated entirely by natural elements, with 100.0% of th",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T21",
+    "name": "Gemini failure handling",
+    "expected": "Graceful error response",
+    "actual": "Fallback: True, Text: ",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T24",
+    "name": "Confidence validation",
+    "expected": "0-100 numeric",
+    "actual": "Confidence: 38.0",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T25",
+    "name": "Execution trace validation",
+    "expected": "Task + model info",
+    "actual": "Trace length: 744",
+    "status": "PASS",
+    "evidence": "Trace snippet: ['[TASK] Scene Description', '[INPUT_VALIDATION] Image A: Format=Standard Raster, CRS=Local Grid, Dimensions=10x10', '[POLICY_VALIDATION] PASSED: RS_C"
+  },
+  {
+    "id": "T26",
+    "name": "Evidence validation",
+    "expected": "Evidence dict with regions/stats",
+    "actual": "Keys: ['type', 'regions', 'stats']",
+    "status": "PASS",
+    "evidence": ""
+  },
+  {
+    "id": "T30",
+    "name": "Repeated inference stability",
+    "expected": "Consistent success",
+    "actual": "0/3 succeeded",
+    "status": "FAIL",
+    "evidence": ""
+  }
+]
