@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Satellite, Crosshair, Upload, Map, Layers, Target, Activity, 
   CheckCircle2, AlertTriangle, ShieldCheck, Download, 
-  ChevronRight, Database, Maximize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff, Scan, Loader2
+  ChevronRight, Database, Maximize, Minimize, Cpu, Sparkles, Trash2, LayoutDashboard, MessageSquare, Eye, EyeOff, Scan, Loader2, CornerDownRight
 } from 'lucide-react';
 
 // =====================================================================
@@ -54,8 +54,10 @@ export default function SatQueryApp() {
   const [activeTab, setActiveTab] = useState<'A' | 'B' | 'SAR'>('A');
   const [rightTab, setRightTab] = useState<'CHAT' | 'DETAILS'>('CHAT');
   const [showMarkings, setShowMarkings] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [query, setQuery] = useState("");
+  const [lastExecutedQuery, setLastExecutedQuery] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,21 +130,43 @@ export default function SatQueryApp() {
     setError(null);
     setResult(null);
     setRightTab('CHAT'); 
+    setLastExecutedQuery(query);
     
-    const phrases = [
+    let phrases = [
       "Calibrating Multispectral Sensors...",
       "Extracting VLM Semantic Priors...",
       "Running Agentic GrabCut Algorithm...",
       "Applying Morphological Closings...",
       "Isolating Spatial Boundaries...",
-      "Generating Vector Topologies..."
+      "Synthesizing Intelligence Brief..."
     ];
+    
+    const q = query.toLowerCase();
+    if (q.includes('change') || q.includes('new') || q.includes('construct')) {
+      phrases = [
+        "Aligning Bi-Temporal Telemetry...",
+        "Executing Spatial Pixel Differencing...",
+        "Applying Structural Morphological Closings...",
+        "Generating Change Polygons...",
+        "Synthesizing Geospatial Brief..."
+      ];
+    } else if (q.includes('sar') || q.includes('fusion') || q.includes('radar')) {
+      phrases = [
+        "Co-registering Optical and SAR Datasets...",
+        "Fusing Microwave Backscatter Signals...",
+        "Isolating Structural Density...",
+        "Mapping Multimodal Features...",
+        "Synthesizing Intelligence Brief..."
+      ];
+    }
+
     let step = 0;
     setLoadingPhrase(phrases[0]);
     const phraseInterval = setInterval(() => {
       step++;
       if (step < phrases.length) setLoadingPhrase(phrases[step]);
-    }, 800);
+      // Stop looping at the end so it stays on the "Synthesizing..." text instead of jumping back
+    }, 1500);
 
     const startTime = Date.now();
 
@@ -184,18 +208,40 @@ export default function SatQueryApp() {
 
   const getSuggestions = () => {
     if (imageSAR.preview && imageA.preview) return [
-      { text: "Identify built-up areas using both sensors", q: "Identify built-up areas using both optical and SAR sensors." },
-      { text: "Detect ships under clouds using SAR", q: "Detect ships in cloudy regions using SAR." }
+      { text: "Analyze structural density using optical-SAR fusion", q: "Analyze structural density using optical-SAR fusion." },
+      { text: "Detect water bodies using radar backscatter", q: "Detect water bodies using radar backscatter." }
     ];
     if (imageB.preview && imageA.preview) return [
-      { text: "What changed between these dates?", q: "What changed between these two dates, and where did the change occur?" },
-      { text: "Highlight new construction", q: "Highlight new construction." },
-      { text: "Calculate deforested area", q: "Calculate deforested area." }
+      { text: "Detect new construction and infrastructure", q: "Detect new construction and infrastructure." },
+      { text: "Compare structural development between dates", q: "Compare structural development between dates." },
+      { text: "Highlight barren land changes", q: "Highlight barren land changes." }
     ];
     return [
-      { text: "Find buildings", q: "Find buildings." },
-      { text: "Assess vegetation health", q: "Assess vegetation health." },
-      { text: "Describe major objects", q: "Describe the land-cover and major objects visible in this image." }
+      { text: "Locate the major water body", q: "Locate the major water body." },
+      { text: "Mark the vegetation and forests", q: "Mark the vegetation and forests." },
+      { text: "Analyze the structural development density", q: "Analyze the structural development density." },
+      { text: "Locate Marine Drive coastline", q: "Locate Marine Drive coastline." }
+    ];
+  };
+
+  const getFollowUpSuggestions = (lastQ: string) => {
+    if (!lastQ) return [];
+    const q = lastQ.toLowerCase();
+    if (q.includes('water') || q.includes('river') || q.includes('coastline') || q.includes('marine')) return [
+      { text: "Calculate the exact spatial area of the water body", q: "Calculate the exact spatial area of the water body." },
+      { text: "Highlight nearby structural development", q: "Highlight nearby structural development." }
+    ];
+    if (q.includes('change') || q.includes('new') || q.includes('construct') || q.includes('develop')) return [
+      { text: "Calculate the total area of the new construction", q: "Calculate the total area of the new construction." },
+      { text: "Highlight the surrounding vegetation", q: "Highlight the surrounding vegetation." }
+    ];
+    if (q.includes('vegetation') || q.includes('forest')) return [
+      { text: "Calculate the total vegetated area", q: "Calculate the total vegetated area." },
+      { text: "Highlight barren land nearby", q: "Highlight barren land nearby." }
+    ];
+    return [
+      { text: "Calculate the spatial area of these features", q: "Calculate the spatial area of these features." },
+      { text: "Describe the overall scene in detail", q: "Describe the overall scene in detail." }
     ];
   };
 
@@ -418,8 +464,8 @@ export default function SatQueryApp() {
             {((activeTab === 'A' && imageA.preview) || 
               (activeTab === 'B' && imageB.preview) || 
               (activeTab === 'SAR' && imageSAR.preview)) && (
-              <div className="relative w-full h-full p-6 flex items-center justify-center group overflow-auto">
-                <div className="relative max-w-full max-h-full inline-block shadow-xl shadow-slate-300/50 border-4 border-white bg-white rounded-md overflow-visible transition-all">
+              <div className={`relative w-full h-full flex items-center justify-center group overflow-auto transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-900/95 p-12 backdrop-blur-sm' : 'p-6'}`}>
+                <div className={`relative inline-block border-4 border-white bg-white rounded-md transition-all ${isFullscreen ? 'max-w-[95vw] max-h-[95vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]' : 'max-w-full max-h-full shadow-xl shadow-slate-300/50'}`}>
                   <img 
                     src={activeTab === 'A' ? imageA.preview : activeTab === 'B' ? imageB.preview : imageSAR.preview} 
                     alt="Satellite Observation" 
@@ -507,18 +553,23 @@ export default function SatQueryApp() {
                   })}
                 </div>
                 
-                <div className="absolute top-6 right-6 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute top-6 right-6 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-50">
                   {result?.evidence?.regions && result.evidence.regions.length > 0 && (
                     <button 
                       onClick={() => setShowMarkings(!showMarkings)}
                       title={showMarkings ? "Hide Regions" : "Show Regions"}
-                      className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-orange-600 hover:border-orange-300 hover:scale-105 transition-all"
+                      className="p-3 bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-orange-600 hover:border-orange-300 hover:scale-105 transition-all"
                     >
                       {showMarkings ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   )}
-                  <button className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-blue-800 hover:border-blue-300 hover:scale-105 transition-all"><Maximize className="w-4 h-4" /></button>
-                  <button className="p-3 bg-white/80 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-blue-800 hover:border-blue-300 hover:scale-105 transition-all"><Layers className="w-4 h-4" /></button>
+                  <button 
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                    className="p-3 bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-xl text-slate-600 hover:text-blue-800 hover:border-blue-300 hover:scale-105 transition-all"
+                  >
+                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
             )}
@@ -588,44 +639,62 @@ export default function SatQueryApp() {
 
                     {/* ACTIVE INTELLIGENCE OUTPUT BUBBLE */}
                     {result && (
-                      <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-2xl p-5 relative shadow-md shadow-blue-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-[10px] font-black font-mono tracking-widest text-blue-800 uppercase flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-                            Intelligence Brief
-                          </span>
-                          <span className="text-[10px] font-black font-mono text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full shadow-sm">
-                            {result.confidence.toFixed(0)}% CONFIDENCE
-                          </span>
-                        </div>
-                        
-                        <p className="text-sm text-slate-800 leading-relaxed font-bold mb-4">
-                          {result.answer}
-                        </p>
-
-                        {/* NEW: Result Summary Card */}
-                        <div className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Primary Task</span>
-                            <span className="text-xs font-black text-blue-900">{result.task.replace(/_/g, ' ')}</span>
+                      <>
+                        <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-2xl p-5 relative shadow-md shadow-blue-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[10px] font-black font-mono tracking-widest text-blue-800 uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                              Intelligence Brief
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full shadow-sm">
+                              {result.confidence.toFixed(0)}% CONFIDENCE
+                            </span>
                           </div>
-                          {result.short_summary && (
-                            <div className="flex flex-col text-right">
-                              <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Summary</span>
-                              <span className="text-xs font-bold text-slate-600">{result.short_summary}</span>
+                          
+                          <p className="text-sm text-slate-800 leading-relaxed font-bold mb-4">
+                            {result.answer}
+                          </p>
+
+                          {/* NEW: Result Summary Card */}
+                          <div className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Primary Task</span>
+                              <span className="text-xs font-black text-blue-900">{result.task.replace(/_/g, ' ')}</span>
                             </div>
-                          )}
+                            {result.short_summary && (
+                              <div className="flex flex-col text-right">
+                                <span className="text-[9px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-1">Summary</span>
+                                <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">{result.short_summary}</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="mt-4 pt-3 border-t border-blue-100/50 flex justify-end">
+                            <button 
+                              onClick={() => setRightTab('DETAILS')}
+                              className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 transition-colors hover:translate-x-1"
+                            >
+                              View Evidence & Details <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        
-                        <div className="mt-4 pt-3 border-t border-blue-100/50 flex justify-end">
-                          <button 
-                            onClick={() => setRightTab('DETAILS')}
-                            className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 transition-colors hover:translate-x-1"
-                          >
-                            View Evidence & Details <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
+
+                        {/* Follow-up Suggestions */}
+                        <div className="space-y-3 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                          <p className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                            <CornerDownRight className="w-3.5 h-3.5 text-orange-400" /> Suggested Follow-ups
+                          </p>
+                          {getFollowUpSuggestions(lastExecutedQuery).map((sug, idx) => (
+                            <button 
+                              key={idx} 
+                              onClick={() => setQuery(sug.q)} 
+                              className="w-full text-left px-4 py-3 text-xs font-bold bg-white border border-slate-200 shadow-sm rounded-xl hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 text-slate-700 transition-all hover:-translate-y-0.5 truncate"
+                            >
+                              {sug.text}
+                            </button>
+                          ))}
                         </div>
-                      </div>
+                      </>
                     )}
 
                     {/* Query Input Section */}
