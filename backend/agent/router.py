@@ -56,10 +56,11 @@ TAXONOMY OF PERMITTED TOOLS:
 
 RULES:
 1. Preserve open-vocabulary targets in 'target'. Do NOT force into rigid classes.
-2. If the user asks for comparative density (e.g. 'spot the area with more structural development', 'which part is most urbanized'), sequence: RS_GROUNDING -> SPATIAL_COMPARATOR.
+2. If the user asks for comparative density, sequence: RS_GROUNDING -> SPATIAL_COMPARATOR.
 3. If the user asks 'how much' or 'area', sequence: RS_GROUNDING -> AREA_CALCULATOR.
-4. If the user mentions "SAR", "radar", "backscatter", or asks to combine/fuse imagery, you MUST use OPTICAL_SAR_FUSION, even if they are asking to locate features.
+4. If the user mentions "SAR", "radar", "backscatter", or asks to combine/fuse imagery, you MUST use OPTICAL_SAR_FUSION.
 5. If the user mentions "change", "before", "after", or "difference", use CHANGE_DETECTION.
+6. CRITICAL: If SAR Sensor Telemetry is True, you MUST substitute RS_GROUNDING with OPTICAL_SAR_FUSION for ALL grounding, area, and comparative sequences.
 
 Output strictly valid JSON:
 {{
@@ -97,6 +98,8 @@ def _run_heuristic_router(request) -> Tuple[dict, List[dict]]:
     if not target:
         target = "features"
 
+    first_tool = "OPTICAL_SAR_FUSION" if request.has_sar else "RS_GROUNDING"
+
     if any(w in q for w in ["most", "more structural", "highest density", "more development", "concentrated"]):
         intent = {
             "intent": "comparative_spatial_analysis",
@@ -104,7 +107,7 @@ def _run_heuristic_router(request) -> Tuple[dict, List[dict]]:
             "operation": "rank_density"
         }
         tools = [
-            {"tool": "RS_GROUNDING", "input": target},
+            {"tool": first_tool, "input": target},
             {"tool": "SPATIAL_COMPARATOR", "input": target}
         ]
         return intent, tools
@@ -123,12 +126,12 @@ def _run_heuristic_router(request) -> Tuple[dict, List[dict]]:
 
     if any(w in q for w in ["how much", "percentage", "area", "extent", "hectares"]):
         return {"intent": "measurement", "target": target, "operation": "quantify"}, [
-            {"tool": "RS_GROUNDING", "input": target},
+            {"tool": first_tool, "input": target},
             {"tool": "AREA_CALCULATOR", "input": "REGIONS"}
         ]
 
     if any(w in q for w in ["highlight", "mark", "locate", "find", "where are", "spot"]):
-        return {"intent": "grounding", "target": target, "operation": "locate"}, [{"tool": "RS_GROUNDING", "input": target}]
+        return {"intent": "grounding", "target": target, "operation": "locate"}, [{"tool": first_tool, "input": target}]
 
     if any(w in q for w in ["describe", "caption", "overview", "summarize"]):
         return {"intent": "caption", "target": "scene", "operation": "describe"}, [{"tool": "RS_CAPTION", "input": request.query}]
