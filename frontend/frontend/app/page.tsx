@@ -220,7 +220,7 @@ export default function SatQueryApp() {
       { text: "Locate the major water body", q: "Locate the major water body." },
       { text: "Mark the vegetation and forests", q: "Mark the vegetation and forests." },
       { text: "Analyze the structural development density", q: "Analyze the structural development density." },
-      { text: "Locate Marine Drive coastline", q: "Locate Marine Drive coastline." }
+      { text: "Highlight barren land and soil", q: "Highlight barren land and soil." }
     ];
   };
 

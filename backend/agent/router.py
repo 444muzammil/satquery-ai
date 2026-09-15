@@ -58,6 +58,8 @@ RULES:
 1. Preserve open-vocabulary targets in 'target'. Do NOT force into rigid classes.
 2. If the user asks for comparative density (e.g. 'spot the area with more structural development', 'which part is most urbanized'), sequence: RS_GROUNDING -> SPATIAL_COMPARATOR.
 3. If the user asks 'how much' or 'area', sequence: RS_GROUNDING -> AREA_CALCULATOR.
+4. If the user mentions "SAR", "radar", "backscatter", or asks to combine/fuse imagery, you MUST use OPTICAL_SAR_FUSION, even if they are asking to locate features.
+5. If the user mentions "change", "before", "after", or "difference", use CHANGE_DETECTION.
 
 Output strictly valid JSON:
 {{

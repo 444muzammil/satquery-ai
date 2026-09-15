@@ -240,64 +240,74 @@ def _classical_optical_sar_fusion(
     contours, _ = cv2.findContours(fused_built, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     regions, valid_contours = [], []
 
-    # Increase limit to capture more areas, but group them logically
-    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:30]:
-        area = cv2.contourArea(c)
-        if area > max(120, int(image_area * 0.0005)):
-            x, y, bw, bh = cv2.boundingRect(c)
-            
-            # Approximate polygon for precise GIS-style masking
-            epsilon = 0.005 * cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, epsilon, True)
-            poly_pct = []
-            for pt in approx:
-                px, py = pt[0]
-                poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
+    t_low = target.lower()
+    is_water_query = any(kw in t_low for kw in ["water", "river", "lake", "ocean", "sea", "flood", "pond"])
+    is_build_query = any(kw in t_low for kw in ["build", "urban", "structure", "city", "industrial"])
 
-            regions.append({
-                "box": [
-                    round((y / h) * 100, 1),
-                    round((x / w) * 100, 1),
-                    round(((y + bh) / h) * 100, 1),
-                    round(((x + bw) / w) * 100, 1),
-                ],
-                "polygon": poly_pct,
-                "label": "Cross-Modal: High Backscatter + Optical Edge",
-                "actual_pct": (area / image_area) * 100.0,
-                "area_px": area,
-            })
-            valid_contours.append(c.tolist())
+    if not is_water_query:
+        # Increase limit to capture more areas, but group them logically
+        for c in sorted(contours, key=cv2.contourArea, reverse=True)[:30]:
+            area = cv2.contourArea(c)
+            if area > max(120, int(image_area * 0.0005)):
+                x, y, bw, bh = cv2.boundingRect(c)
+                
+                # Approximate polygon for precise GIS-style masking
+                epsilon = 0.005 * cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, epsilon, True)
+                poly_pct = []
+                for pt in approx:
+                    px, py = pt[0]
+                    poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
 
-    # Also detect water from SAR low backscatter
-    water_contours, _ = cv2.findContours(
-        low_backscatter, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
-    )
-    for c in sorted(water_contours, key=cv2.contourArea, reverse=True)[:5]:
-        area = cv2.contourArea(c)
-        if area > max(200, int(image_area * 0.002)):
-            x, y, bw, bh = cv2.boundingRect(c)
-            
-            # Approximate polygon for precise GIS-style masking
-            epsilon = 0.005 * cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, epsilon, True)
-            poly_pct = []
-            for pt in approx:
-                px, py = pt[0]
-                poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
+                regions.append({
+                    "box": [
+                        round((y / h) * 100, 1),
+                        round((x / w) * 100, 1),
+                        round(((y + bh) / h) * 100, 1),
+                        round(((x + bw) / w) * 100, 1),
+                    ],
+                    "polygon": poly_pct,
+                    "label": "Cross-Modal: High Backscatter (Built-up)",
+                    "actual_pct": (area / image_area) * 100.0,
+                    "area_px": area,
+                })
+                valid_contours.append(c.tolist())
 
-            regions.append({
-                "box": [
-                    round((y / h) * 100, 1),
-                    round((x / w) * 100, 1),
-                    round(((y + bh) / h) * 100, 1),
-                    round(((x + bw) / w) * 100, 1),
-                ],
-                "polygon": poly_pct,
-                "label": "Cross-Modal: Low SAR Backscatter (Water)",
-                "actual_pct": (area / image_area) * 100.0,
-                "area_px": area,
-            })
-            valid_contours.append(c.tolist())
+    if not is_build_query:
+        # Also detect water from SAR low backscatter
+        # Use morphological closing to merge small water blobs into unified bodies
+        low_backscatter = cv2.morphologyEx(
+            low_backscatter, cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        )
+        water_contours, _ = cv2.findContours(
+            low_backscatter, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+        )
+        for c in sorted(water_contours, key=cv2.contourArea, reverse=True)[:15]:
+            area = cv2.contourArea(c)
+            if area > max(200, int(image_area * 0.002)):
+                x, y, bw, bh = cv2.boundingRect(c)
+                
+                epsilon = 0.005 * cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, epsilon, True)
+                poly_pct = []
+                for pt in approx:
+                    px, py = pt[0]
+                    poly_pct.append([round((px / w) * 100, 2), round((py / h) * 100, 2)])
+
+                regions.append({
+                    "box": [
+                        round((y / h) * 100, 1),
+                        round((x / w) * 100, 1),
+                        round(((y + bh) / h) * 100, 1),
+                        round(((x + bw) / w) * 100, 1),
+                    ],
+                    "polygon": poly_pct,
+                    "label": "Cross-Modal: Low SAR Backscatter (Water)",
+                    "actual_pct": (area / image_area) * 100.0,
+                    "area_px": area,
+                })
+                valid_contours.append(c.tolist())
 
     summary = (
         f"Classical optical-SAR co-occurrence analysis: matched optical edge gradients "
